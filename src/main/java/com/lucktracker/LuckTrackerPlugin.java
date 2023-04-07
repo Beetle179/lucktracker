@@ -127,11 +127,9 @@ public class LuckTrackerPlugin extends Plugin {
 		double mod = 1.0D;
 		for (Prayer prayer: Prayer.values()) {
 			if (client.getVarbitValue(prayer.getVarbit()) > 0) { // Using a custom Prayer class, so we lost access to client.getPrayerActive() or whatever it is
-//				sendChatMessage(String.format("Idenfitied active prayer varbit %d", prayer.getVarbit()));
 				mod += prayer.getPrayerAttributeMod(prayerAttribute);
 			}
 		}
-//		sendChatMessage(String.format("Total prayer mod for %s is %f", prayerAttribute.getName(), mod));
 		return mod;
 	}
 
@@ -274,30 +272,7 @@ public class LuckTrackerPlugin extends Plugin {
 
 		// Update currently interacting NPC
 		Actor interactingActor = player.getInteracting();
-		if (!(interactingActor instanceof NPC)) return;
-		lastInteracting = interactingActor;
-
-		// DEBUG STUFF
-		int npcId = ((NPC) lastInteracting).getId();
-		MonsterData npcData = monsterTable.getMonsterData(npcId);
-
-		String npcName;
-		int npcDcrush;
-		try {
-			npcName = npcData.getName();
-		}
-		catch (Exception asdf) {
-			npcName = "ERROR";
-		}
-
-		try {
-			npcDcrush = npcData.getDCrush();
-		}
-		catch (Exception asdf) {
-			npcDcrush = -999;
-		}
-
-		sendChatMessage(String.format("ID: %d || Monster: %s || Crush defense: %d", npcId, npcName, npcDcrush));
+		if (interactingActor instanceof NPC) lastInteracting = interactingActor;
 	}
 
 
@@ -353,6 +328,24 @@ public class LuckTrackerPlugin extends Plugin {
 		{
 			processMeleeHit(equipmentStat, weaponStance);
 		}
+
+		// DEBUG STUFF
+		int npcId = ((NPC) lastInteracting).getId();
+		MonsterData npcData = monsterTable.getMonsterData(npcId);
+
+		if (npcId != -1) {
+
+		}
+
+		String npcName;
+		int npcDcrush;
+		try { npcName = npcData.getName(); }
+		catch (Exception asdf) { npcName = "ERROR"; }
+
+		try { npcDcrush = npcData.getDCrush(); }
+		catch (Exception asdf) { npcDcrush = -999; }
+
+		sendChatMessage(String.format("ID: %d || Monster: %s || Crush defense: %d", npcId, npcName, npcDcrush));
 
 //		sendChatMessage(String.format("Weapon stance: %s", weaponStance.getName()));
 //		sendChatMessage(String.format("Invisible ATT bonus = %d / Invisible STR bonus = %d", weaponStance.getInvisBonus(Skill.ATTACK), strStanceBonus));
