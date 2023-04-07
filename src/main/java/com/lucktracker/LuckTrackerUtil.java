@@ -8,6 +8,8 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
 import net.runelite.http.api.item.ItemEquipmentStats;
 
+import java.util.ArrayList;
+
 import static com.lucktracker.EquipmentStat.*;
 
 public class LuckTrackerUtil {
@@ -166,6 +168,21 @@ public class LuckTrackerUtil {
         return -999;
     }
 
-    // endregion
+    public boolean isWearingVoid(Item[] wornItems, Skill skill, boolean elite) { // gross
+        boolean helm = false;
 
+        ArrayList<Integer> itemIds = new ArrayList<>(wornItems.length);
+        for (Item item : wornItems) itemIds.add(item.getId());
+
+        if (itemIds.contains(11665) && (skill == Skill.ATTACK)) helm = true;
+        else if (itemIds.contains(11664) && (skill == Skill.RANGED)) helm = true;
+        else if (itemIds.contains(11663) && (skill == Skill.MAGIC)) helm = true;
+
+        if (!helm) return false;
+
+        if (itemIds.contains(8839) && itemIds.contains(8840) && itemIds.contains(8842) && (!elite)) return true; // Regular void armor
+        return itemIds.contains(13072) && itemIds.contains(13073) && itemIds.contains(8842) && elite; // Elite void armor
+
+    }
+    // endregion
 }

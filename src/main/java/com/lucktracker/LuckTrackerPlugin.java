@@ -53,6 +53,15 @@ public class LuckTrackerPlugin extends Plugin {
 	private Monsters monsterTable;
 	private LuckTrackerUtil UTIL;
 	private Item[] wornItems;
+	private int specialAttackEnergy;
+	private boolean usedSpecialAttack;
+
+	private boolean isWearingMeleeVoid;
+	private boolean isWearingRangeVoid;
+	private boolean isWearingMagicVoid;
+	private boolean isWearingMeleeEliteVoid;
+	private boolean isWearingRangeEliteVoid;
+	private boolean isWearingMagicEliteVoid;
 
 	@Inject
 	private Client client;
@@ -78,19 +87,16 @@ public class LuckTrackerPlugin extends Plugin {
 		tickCounterUtil.init();
 		monsterTable = new Monsters();
 		UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager);
+
 		clientThread.invokeLater(() -> {
+			// Get worn items on startup
 			final ItemContainer container = client.getItemContainer(InventoryID.EQUIPMENT);
 			if (container != null) wornItems = container.getItems();
+
+			// Get special attack energy, initialize the spec boolean
+			this.usedSpecialAttack = false;
+			this.specialAttackEnergy = client.getVarpValue(VarPlayer.SPECIAL_ATTACK_PERCENT);
 		});
-	}
-
-	@Subscribe
-	public void onItemContainerChanged(ItemContainerChanged event) {
-		if (event.getItemContainer() != client.getItemContainer(InventoryID.EQUIPMENT)) {
-			return;
-		}
-
-		wornItems = event.getItemContainer().getItems();
 	}
 
 	@Override
@@ -100,61 +106,6 @@ public class LuckTrackerPlugin extends Plugin {
 	}
 
 	@Subscribe
-	public void onInteractingChanged(InteractingChanged event) {
-		;
-	}
-
-
-	// ************************************************** //
-	// region Hit Processing Functions
-	// Not pure functions: will still need to pull information from client/player
-	// Pass in equipmentStat and weaponStance where possible, since those must already be calculated anyway
-	// (Otherwise you wouldn't know what type of hit this was)
-
-	private Attack processMeleeAttack(EquipmentStat equipmentStat, WeaponStance weaponStance) {
-
-		boolean voidArmor = false;
-		double tgtBonus = 1.0; // Might need to be 2 diff target bonuses, one for str one for att?
-
-		int effStrLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.ATTACK), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_STR), weaponStance.getInvisBonus(Skill.STRENGTH), voidArmor);
-		int effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), voidArmor);
-		int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(wornItems, equipmentStat), tgtBonus);
-		int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.STR), tgtBonus);
-//		UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
-
-		return new Attack(attRoll, maxHit);
-	}
-
-	private Attack processMagicSpellAttack() {
-		UTIL.sendChatMessage("processMagicSpellAttack() called");
-		return new Attack(0, 0);
-	}
-
-	private Attack processPoweredStaffAttack() {
-		UTIL.sendChatMessage("processPoweredStaffAttack() called");
-		return new Attack(0, 0);
-	}
-
-	private Attack processRangedAttack(EquipmentStat equipmentStat, WeaponStance weaponStance) {
-
-		boolean voidArmor = false;
-		boolean voidEliteArmor = false;
-		double gearBonus = 1.0;
-		double specialBonus = 1.0;
-
-		int effRangeAtt = LuckTrackerUtil.calcEffectiveRangeAttack(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RATT), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
-		int effRangeStr = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
-		int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(wornItems, equipmentStat), gearBonus);
-		int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.RSTR), gearBonus, specialBonus);
-		UTIL.sendChatMessage(String.format("RSTR = %d", UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.RSTR)));
-		UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
-		return new Attack(attRoll, maxHit);
-	}
-
-	// endregion
-	// ************************************************** //
-
-	@Subscribe
 	public void onGameTick(GameTick gameTick) {
 
 		Player player = client.getLocalPlayer();
@@ -162,7 +113,28 @@ public class LuckTrackerPlugin extends Plugin {
 
 		// Update currently interacting NPC
 		Actor interactingActor = player.getInteracting();
-		if (interactingActor instanceof NPC) lastInteracting = interactingActor;
+		if (interactingActor instanceof NPC) this.lastInteracting = interactingActor;
+
+		// Reset the special attack bool
+		clientThread.invokeLater(() -> {this.usedSpecialAttack = false;});
+	}
+
+	@Subscribe
+	public void onVarbitChanged(VarbitChanged event) {
+		if (event.getVarpId() != VarPlayer.SPECIAL_ATTACK_PERCENT) return;
+		if (event.getValue() < this.specialAttackEnergy) this.usedSpecialAttack = true;
+		this.specialAttackEnergy = event.getValue();
+	}
+
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event) {
+		if (event.getItemContainer() != client.getItemContainer(InventoryID.EQUIPMENT)) {
+			return;
+		}
+
+		this.wornItems = event.getItemContainer().getItems();
+
+		clientThread.invokeLater(this::updateVoidStatus);
 	}
 
 	@Subscribe
@@ -182,47 +154,55 @@ public class LuckTrackerPlugin extends Plugin {
 			Player p = (Player) e.getActor();
 			if (p != client.getLocalPlayer()) return;
 			if (!tickCounterUtil.isAttack(p.getAnimation())) return; // If the animation isn't an attack, stop here
+			int animationId = p.getAnimation();
 
 			// ************************************************** //
-			// Player Attack processing
+			// Player Attack setup
+			// TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
 
 			int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
 			int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
 
 			WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId); // Determine weapon stance (Controlled, Aggressive, Rapid, etc.)
 			AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId); // Determine if we're using slash, crush, stab, range, or magic based on the weapon type and current stance
-			EquipmentStat equipmentStat = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
 
-			// TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
 
-			Attack attack;
+			// NPC Defense setup
 
-			if (weaponStance == WeaponStance.CASTING || weaponStance == WeaponStance.DEFENSIVE_CASTING) {
-				attack = processMagicSpellAttack();
-			} else if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE) {
-				attack = processPoweredStaffAttack();
-			} else if (weaponStance == WeaponStance.RANGE_ACCURATE || weaponStance == WeaponStance.RANGE_LONGRANGE || weaponStance == WeaponStance.RAPID) {
-				attack = processRangedAttack(equipmentStat, weaponStance);
-			} else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED) {
-				attack = processMeleeAttack(equipmentStat, weaponStance);
-			} else {
-				attack = new Attack(0, 0);
-			}
-
-			// ************************************************** //
-			// NPC Defense processing
-
-			int npcId = ((NPC) lastInteracting).getId();
-			MonsterData npcData = monsterTable.getMonsterData(npcId);
-			EquipmentStat opponentDefenseStat = LuckTrackerUtil.getDefensiveStat(equipmentStat); // Get the defensive stat to generate NPC's defense roll
-
+			int npcId = ((NPC) this.lastInteracting).getId();
+			MonsterData npcData = this.monsterTable.getMonsterData(npcId);
 			if (npcData == null) { UTIL.sendChatMessage("UNKNOWN MONSTER"); return; }
 
-			int npcDefRoll = npcData.calcDefenseRoll(opponentDefenseStat);
 
-			UTIL.sendChatMessage(String.format("%s vs. %s -- Attack roll: %d | Defense roll: %d | Hit chance: %f | Max hit: %d", equipmentStat, opponentDefenseStat, attack.getAttRoll(), npcDefRoll, LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit()));
-			HitDist hitDist = new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit());
-			UTIL.sendChatMessage(String.format("Average damage: %f", hitDist.getAvgDmg()));
+			HitDist hitDist = processAttack(weaponStance, attackStyle, npcData, this.usedSpecialAttack);
+
+//			HitDist hitDist = new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit());
+
 		});
 	}
+
+	private void updateVoidStatus() { // gross
+		this.isWearingMeleeVoid = UTIL.isWearingVoid(this.wornItems, Skill.ATTACK, false);
+		this.isWearingRangeVoid = UTIL.isWearingVoid(this.wornItems, Skill.RANGED, false);
+		this.isWearingMagicVoid = UTIL.isWearingVoid(this.wornItems, Skill.MAGIC, false);
+
+		this.isWearingMeleeEliteVoid = UTIL.isWearingVoid(this.wornItems, Skill.ATTACK, true);
+		this.isWearingRangeEliteVoid = UTIL.isWearingVoid(this.wornItems, Skill.RANGED, true);
+		this.isWearingMagicEliteVoid = UTIL.isWearingVoid(this.wornItems, Skill.MAGIC, true);
+	}
+
+	HitDist processAttack(WeaponStance weaponStance, AttackStyle attackStyle, MonsterData npcData, boolean usedSpecialAttack) {
+
+		boolean UNIQUE_CASE = false;
+
+		if (!UNIQUE_CASE) {
+			EquipmentStat equipmentStatOffense = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
+			EquipmentStat equipmentStatDefense = LuckTrackerUtil.getDefensiveStat(equipmentStatOffense); // Get the defensive stat to generate NPC's defense roll
+		}
+
+
+
+		return new HitDist(0.1f, 10);
+	}
+
 }
