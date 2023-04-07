@@ -54,12 +54,18 @@ public class LuckTrackerPlugin extends Plugin {
 	private LuckTrackerUtil UTIL;
 	private Item[] wornItems;
 
-	@Inject private Client client;
-	@Inject private ClientThread clientThread;
-	@Inject private LuckTrackerConfig config;
-	@Inject private ItemManager itemManager;
-	@Inject private ChatMessageManager chatMessageManager;
-	@Inject private NPCManager npcManager;
+	@Inject
+	private Client client;
+	@Inject
+	private ClientThread clientThread;
+	@Inject
+	private LuckTrackerConfig config;
+	@Inject
+	private ItemManager itemManager;
+	@Inject
+	private ChatMessageManager chatMessageManager;
+	@Inject
+	private NPCManager npcManager;
 
 	@Provides
 	LuckTrackerConfig provideConfig(ConfigManager configManager) {
@@ -72,13 +78,15 @@ public class LuckTrackerPlugin extends Plugin {
 		tickCounterUtil.init();
 		monsterTable = new Monsters();
 		UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager);
+		clientThread.invokeLater(() -> {
+			final ItemContainer container = client.getItemContainer(InventoryID.EQUIPMENT);
+			if (container != null) wornItems = container.getItems();
+		});
 	}
 
 	@Subscribe
-	public void onItemContainerChanged(ItemContainerChanged event)
-	{
-		if (event.getItemContainer() != client.getItemContainer(InventoryID.EQUIPMENT))
-		{
+	public void onItemContainerChanged(ItemContainerChanged event) {
+		if (event.getItemContainer() != client.getItemContainer(InventoryID.EQUIPMENT)) {
 			return;
 		}
 
@@ -166,67 +174,55 @@ public class LuckTrackerPlugin extends Plugin {
 		//  Also potentially a lot of other attack animations.
 		// 	See tickCounterUtil -> aniTM.
 
-//		clientThread.invokeLater(); Invoke
 
-		if (!(e.getActor() instanceof Player)) return;
+		// Do everything AFTER this client thread: need to allow targeted NPC to update first.
+		clientThread.invokeLater(() -> {
 
-		Player p = (Player) e.getActor();
-		if (p != client.getLocalPlayer()) return;
+			if (!(e.getActor() instanceof Player)) return;
+			Player p = (Player) e.getActor();
+			if (p != client.getLocalPlayer()) return;
+			if (!tickCounterUtil.isAttack(p.getAnimation())) return; // If the animation isn't an attack, stop here
 
-		if (!tickCounterUtil.isAttack(p.getAnimation())) return; // If the animation isn't an attack, stop here
+			// ************************************************** //
+			// Player Attack processing
 
-		PlayerComposition pc = p.getPlayerComposition();
-		if (p.getPlayerComposition() == null) return;
+			int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
+			int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
 
-		// ************************************************** //
-		// Player Attack processing
+			WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId); // Determine weapon stance (Controlled, Aggressive, Rapid, etc.)
+			AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId); // Determine if we're using slash, crush, stab, range, or magic based on the weapon type and current stance
+			EquipmentStat equipmentStat = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
 
-		int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
-		int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
+			// TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
 
-		WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId); // Determine weapon stance (Controlled, Aggressive, Rapid, etc.)
-		AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId); // Determine if we're using slash, crush, stab, range, or magic based on the weapon type and current stance
-		EquipmentStat equipmentStat = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
+			Attack attack;
 
-		// TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
+			if (weaponStance == WeaponStance.CASTING || weaponStance == WeaponStance.DEFENSIVE_CASTING) {
+				attack = processMagicSpellAttack();
+			} else if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE) {
+				attack = processPoweredStaffAttack();
+			} else if (weaponStance == WeaponStance.RANGE_ACCURATE || weaponStance == WeaponStance.RANGE_LONGRANGE || weaponStance == WeaponStance.RAPID) {
+				attack = processRangedAttack(equipmentStat, weaponStance);
+			} else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED) {
+				attack = processMeleeAttack(equipmentStat, weaponStance);
+			} else {
+				attack = new Attack(0, 0);
+			}
 
-		Attack attack;
+			// ************************************************** //
+			// NPC Defense processing
 
-		if (weaponStance == WeaponStance.CASTING || weaponStance == WeaponStance.DEFENSIVE_CASTING)
-		{
-			attack = processMagicSpellAttack();
-		}
-		else if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE)
-		{
-			attack = processPoweredStaffAttack();
-		}
-		else if (weaponStance == WeaponStance.RANGE_ACCURATE || weaponStance == WeaponStance.RANGE_LONGRANGE || weaponStance == WeaponStance.RAPID)
-		{
-			attack = processRangedAttack(equipmentStat, weaponStance);
-		}
-		else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED)
-		{
-			attack = processMeleeAttack(equipmentStat, weaponStance);
-		}
-		else { attack = new Attack(0, 0); }
+			int npcId = ((NPC) lastInteracting).getId();
+			MonsterData npcData = monsterTable.getMonsterData(npcId);
+			EquipmentStat opponentDefenseStat = LuckTrackerUtil.getDefensiveStat(equipmentStat); // Get the defensive stat to generate NPC's defense roll
 
-		// ************************************************** //
-		// NPC Defense processing
+			if (npcData == null) { UTIL.sendChatMessage("UNKNOWN MONSTER"); return; }
 
-		int npcId = ((NPC) lastInteracting).getId();
-		MonsterData npcData = monsterTable.getMonsterData(npcId);
-		EquipmentStat opponentDefenseStat = LuckTrackerUtil.getDefensiveStat(equipmentStat); // Get the defensive stat to generate NPC's defense roll
+			int npcDefRoll = npcData.calcDefenseRoll(opponentDefenseStat);
 
-		if (npcData == null) {
-			UTIL.sendChatMessage("UNKNOWN MONSTER");
-			return;
-		}
-
-		int npcDefRoll = npcData.calcDefenseRoll(opponentDefenseStat);
-
-		UTIL.sendChatMessage(String.format("%s vs. %s -- Attack roll: %d | Defense roll: %d | Hit chance: %f | Max hit: %d", equipmentStat, opponentDefenseStat, attack.getAttRoll(), npcDefRoll, LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit()));
-
-		HitDist hitDist = new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit());
-		UTIL.sendChatMessage(String.format("Average damage: %f", hitDist.getAvgDmg()));
+			UTIL.sendChatMessage(String.format("%s vs. %s -- Attack roll: %d | Defense roll: %d | Hit chance: %f | Max hit: %d", equipmentStat, opponentDefenseStat, attack.getAttRoll(), npcDefRoll, LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit()));
+			HitDist hitDist = new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit());
+			UTIL.sendChatMessage(String.format("Average damage: %f", hitDist.getAvgDmg()));
+		});
 	}
 }
