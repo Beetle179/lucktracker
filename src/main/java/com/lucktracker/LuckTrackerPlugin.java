@@ -57,6 +57,8 @@ public class LuckTrackerPlugin extends Plugin {
 	private int specialAttackEnergy;
 	private boolean usedSpecialAttack;
 
+	private HitDist runningHitDist;
+
 	private boolean isWearingMeleeVoid;
 	private boolean isWearingRangeVoid;
 	private boolean isWearingMagicVoid;
@@ -97,12 +99,14 @@ public class LuckTrackerPlugin extends Plugin {
 			// Get special attack energy, initialize the spec boolean
 			this.usedSpecialAttack = false;
 			this.specialAttackEnergy = client.getVarpValue(VarPlayer.SPECIAL_ATTACK_PERCENT);
+
+			// Master hit distribution
+			this.runningHitDist = new HitDist();
 		});
 	}
 
 	@Override
 	protected void shutDown() {
-		System.out.println("Dummy statement");
 		assert true;
 	}
 
@@ -176,10 +180,11 @@ public class LuckTrackerPlugin extends Plugin {
 
 
 			HitDist hitDist = processAttack(weaponStance, attackStyle, npcData, this.usedSpecialAttack);
-
 			UTIL.sendChatMessage("Average: " + hitDist.getAvgDmg() + " || Max: " + hitDist.getMax() + " || >0 Prob: " + hitDist.getNonZeroHitChance());
 
-//			HitDist hitDist = new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit());
+			this.runningHitDist.convolve(hitDist);
+			UTIL.sendChatMessage("RUNNING AVG: " + runningHitDist.getAvgDmg());
+
 
 		});
 	}
@@ -201,6 +206,8 @@ public class LuckTrackerPlugin extends Plugin {
 		double gearBonus = 1.0D;
 		double specialBonus = 1.0D;
 
+		int npcCurrentHp = UTIL.getNpcCurrentHp((NPC) lastInteracting);
+
 		if (!UNIQUE_CASE) {
 			Attack attack;
 			EquipmentStat equipmentStatOffense = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
@@ -221,7 +228,7 @@ public class LuckTrackerPlugin extends Plugin {
 				int effRangeStr = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
 				int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(wornItems, equipmentStatOffense), gearBonus);
 				int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.RSTR), gearBonus, specialBonus);
-				UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
+//				UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
 				attack = new Attack(attRoll, maxHit);
 			}
 			else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED) {
@@ -229,7 +236,7 @@ public class LuckTrackerPlugin extends Plugin {
 				int effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), isWearingMeleeVoid || isWearingMeleeEliteVoid);
 				int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(wornItems, equipmentStatOffense), tgtBonus);
 				int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.STR), tgtBonus);
-				UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
+//				UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
 				attack = new Attack(attRoll, maxHit);
 			}
 			else {
@@ -237,10 +244,8 @@ public class LuckTrackerPlugin extends Plugin {
 				attack = new Attack(1000, 10);
 			}
 
-			return new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), defRoll), attack.getMaxHit());
-
+			return new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), defRoll), attack.getMaxHit(), npcCurrentHp);
 		}
-
 		return new HitDist(0.1f, 10);
 	}
 }

@@ -103,7 +103,7 @@ public class LuckTrackerUtil {
     } // endregion
 
     // region NPC Utility Functions
-    private int getNpcCurrentHp(NPC npc) { // Logic from OpponentInfo plugin
+    public int getNpcCurrentHp(NPC npc) { // Logic from OpponentInfo plugin
         int healthRatio = npc.getHealthRatio();
         int healthScale = npc.getHealthScale();
         int maxHealth = npcManager.getHealth(npc.getId());
