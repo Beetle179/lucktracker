@@ -52,6 +52,7 @@ public class LuckTrackerPlugin extends Plugin {
 	private Actor lastInteracting; // Keep track of targetted NPC; will update every game tick
 	private Monsters monsterTable;
 	private LuckTrackerUtil UTIL;
+
 	private Item[] wornItems;
 	private int specialAttackEnergy;
 	private boolean usedSpecialAttack;
@@ -176,6 +177,8 @@ public class LuckTrackerPlugin extends Plugin {
 
 			HitDist hitDist = processAttack(weaponStance, attackStyle, npcData, this.usedSpecialAttack);
 
+			UTIL.sendChatMessage("Average: " + hitDist.getAvgDmg() + " || Max: " + hitDist.getMax() + " || >0 Prob: " + hitDist.getNonZeroHitChance());
+
 //			HitDist hitDist = new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit());
 
 		});
@@ -194,15 +197,50 @@ public class LuckTrackerPlugin extends Plugin {
 	HitDist processAttack(WeaponStance weaponStance, AttackStyle attackStyle, MonsterData npcData, boolean usedSpecialAttack) {
 
 		boolean UNIQUE_CASE = false;
+		double tgtBonus = 1.0D;
+		double gearBonus = 1.0D;
+		double specialBonus = 1.0D;
 
 		if (!UNIQUE_CASE) {
+			Attack attack;
 			EquipmentStat equipmentStatOffense = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
 			EquipmentStat equipmentStatDefense = LuckTrackerUtil.getDefensiveStat(equipmentStatOffense); // Get the defensive stat to generate NPC's defense roll
+
+			int defRoll = npcData.calcDefenseRoll(equipmentStatDefense);
+
+			if (weaponStance == WeaponStance.CASTING || weaponStance == WeaponStance.DEFENSIVE_CASTING) {
+				UTIL.sendChatMessage("Spell cast");
+				attack = new Attack(1000, 10);
+			}
+			else if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE) {
+				UTIL.sendChatMessage("Powered staff");
+				attack = new Attack(1000, 10);
+			}
+			else if (weaponStance == WeaponStance.RANGE_ACCURATE || weaponStance == WeaponStance.RANGE_LONGRANGE || weaponStance == WeaponStance.RAPID) {
+				int effRangeAtt = LuckTrackerUtil.calcEffectiveRangeAttack(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RATT), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
+				int effRangeStr = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
+				int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(wornItems, equipmentStatOffense), gearBonus);
+				int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.RSTR), gearBonus, specialBonus);
+				UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
+				attack = new Attack(attRoll, maxHit);
+			}
+			else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED) {
+				int effStrLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.ATTACK), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_STR), weaponStance.getInvisBonus(Skill.STRENGTH), isWearingMeleeVoid || isWearingMeleeEliteVoid);
+				int effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), isWearingMeleeVoid || isWearingMeleeEliteVoid);
+				int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(wornItems, equipmentStatOffense), tgtBonus);
+				int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.STR), tgtBonus);
+				UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
+				attack = new Attack(attRoll, maxHit);
+			}
+			else {
+				UTIL.sendChatMessage("FAILED TO IDENTIFY ATTACK TYPE");
+				attack = new Attack(1000, 10);
+			}
+
+			return new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), defRoll), attack.getMaxHit());
+
 		}
-
-
 
 		return new HitDist(0.1f, 10);
 	}
-
 }

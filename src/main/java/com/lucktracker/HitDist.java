@@ -23,6 +23,15 @@ public class HitDist {
         return avgDmg;
     }
 
+    public int getMax() { // Only applicable for single-hit distributions
+        System.out.println(this.pmf);
+        return this.pmf.size() - 1;
+    }
+
+    public double getNonZeroHitChance() { // Only applicable for single-hit distributions
+        return 1 - this.pmf.get(0);
+    }
+
     // TODO reformat for ArrayList and validate
     public double[] conv1D(double[] a,double[] b) {
         // https://rarelyknows.wordpress.com/2021/09/12/1d-array-convolution-function-in-java/
