@@ -80,7 +80,7 @@ public class LuckTrackerPlugin extends Plugin {
 
 	@Subscribe
 	public void onInteractingChanged(InteractingChanged event) {
-		// TODO set lastInteracting here? Not sure if these fires before onGameTick / if this is upstream of onAnimationChange
+		;
 	}
 
 
@@ -125,6 +125,7 @@ public class LuckTrackerPlugin extends Plugin {
 		int effRangeStr = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
 		int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(equipmentStat), gearBonus);
 		int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(EquipmentStat.RSTR), gearBonus, specialBonus);
+		UTIL.sendChatMessage(String.format("RSTR = ", UTIL.getEquipmentStyleBonus(EquipmentStat.RSTR)));
 //		UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
 		return new Attack(attRoll, maxHit);
 	}
@@ -151,6 +152,8 @@ public class LuckTrackerPlugin extends Plugin {
 		// TODO hook up salamander blaze and flare; no animation on player, but it spawns G = 952.
 		//  Also potentially a lot of other attack animations.
 		// 	See tickCounterUtil -> aniTM.
+
+//		clientThread.invokeLater(); Invoke
 
 		if (!(e.getActor() instanceof Player)) return;
 

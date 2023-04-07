@@ -143,13 +143,15 @@ public class LuckTrackerUtil {
         for (int id : equippedItems) {
             if (id < 512) continue; // Not a valid item
             id -= 512; // I know this seems weird after the last line... but convert item ID to proper value
+//            System.out.print(String.format("%d || ", id));
+            System.out.print(String.format("%s || ", itemManager.getItemComposition(id).getName()));
             bonus += getItemStyleBonus(id, equipmentStat);
         }
         return bonus;
     }
 
     public int getItemStyleBonus(int id, EquipmentStat equipmentStat) { // Takes an item ID and returns that item's bonus for the specified equipment stat.
-        ItemEquipmentStats stats = itemManager.getItemStats(id, false).getEquipment();
+        ItemEquipmentStats stats = itemManager.getItemStats(id, true).getEquipment();
         if (stats == null) return -999;
         switch(equipmentStat) {
             case ACRUSH: return stats.getAcrush();

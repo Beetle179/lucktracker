@@ -8,22 +8,17 @@ public class HitDist {
     private List<Double> pmf;
 
     public HitDist(double hitProb, int maxHit) {
-        double totalMass = 0;
         System.out.println("Max hit is " + maxHit);
         this.pmf = new ArrayList<Double>();
-        for (int dmg = 0; dmg < maxHit + 1; dmg++) { this.pmf.add(dmg, hitProb / (maxHit + 1.0D)); totalMass += hitProb / (maxHit + 1.0D); }
-        System.out.println(String.format("PMF length is %d", this.pmf.size()));
+        for (int dmg = 0; dmg < maxHit + 1; dmg++) { this.pmf.add(dmg, hitProb / (maxHit + 1.0D)); }
         this.pmf.set(0, this.pmf.get(0) + (1.0D - hitProb));
-        totalMass += 1.0D - hitProb;
-        System.out.println(this.pmf);
-        System.out.println(String.format("Total mass is %f", totalMass));
     }
 
     public double getAvgDmg() {
         double avgDmg = 0.0D;
         for (int dmg = 0; dmg < this.pmf.size(); dmg++) {
             avgDmg += ((double) dmg) * (this.pmf.get(dmg));
-            System.out.print(String.format("DMG %d with probability %f, running avgDmg = %f", dmg, this.pmf.get(dmg), avgDmg));
+//            System.out.print(String.format("DMG %d with probability %f, running avgDmg = %f", dmg, this.pmf.get(dmg), avgDmg));
         }
         return avgDmg;
     }
@@ -64,4 +59,3 @@ public class HitDist {
         return retArr;
     }
 }
-
