@@ -121,7 +121,7 @@ enum WeaponStance // Stances: grant invisible skill bonuses to att/str/def/range
     AGGRESSIVE("Aggressive", new int[] {3}, Skill.STRENGTH),
     DEFENSIVE("Defensive", new int[] {3}, Skill.DEFENCE),
     CONTROLLED("Controlled", new int[] {1, 1, 1}, Skill.ATTACK, Skill.STRENGTH, Skill.DEFENCE),
-    RAPID("Rapid", new int[] {3}, Skill.RANGED),
+    RAPID("Rapid", new int[] {}),
     RANGE_ACCURATE("Range_Accurate", new int[] {3}, Skill.RANGED),
     RANGE_LONGRANGE("Range_Longrange", new int[] {0, 3}, Skill.RANGED, Skill.DEFENCE),
     POWERED_STAFF_LONGRANGE("Powered_Staff_Longrange", new int[] {1, 3}, Skill.MAGIC, Skill.DEFENCE),

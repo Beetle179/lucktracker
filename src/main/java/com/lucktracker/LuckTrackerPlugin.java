@@ -28,9 +28,6 @@ package com.lucktracker;
 import com.google.inject.Provides;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
-import net.runelite.api.ItemComposition;
-import net.runelite.api.Prayer;
-import net.runelite.api.kit.KitType; // For identifying equipped weapon | int weapon = playerComposition.getEquipmentId(KitType.WEAPON);
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
@@ -42,13 +39,8 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.http.api.item.ItemEquipmentStats;
-import net.runelite.http.api.item.ItemStats;
 
 import javax.inject.Inject;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.EnumMap;
 
 @PluginDescriptor(
 		name = "Luck Tracker",
@@ -74,7 +66,7 @@ public class LuckTrackerPlugin extends Plugin {
 
 	@Override
 	protected void startUp() throws Exception {
-		tickCounterUtil = new TickCounterUtil(); // Utility ripped from PVMTickCounter plugin: dictionary of (animation_ID, tick_duration) pairs, plus method to extract ambiguous animations.
+		tickCounterUtil = new TickCounterUtil(); // Utility ripped from PVMTickCounter plugin: dictionary of (animation_ID, tick_duration) pairs. Used for ID'ing player attack animations.
 		tickCounterUtil.init();
 	}
 
@@ -82,8 +74,6 @@ public class LuckTrackerPlugin extends Plugin {
 	protected void shutDown() {
 		assert true;
 	}
-
-	@Subscribe public void onVarbitChanged(VarbitChanged event) { return; }
 
 	public void sendChatMessage(String chatMessage) {
 		final String message = new ChatMessageBuilder()
@@ -96,33 +86,6 @@ public class LuckTrackerPlugin extends Plugin {
 						.type(ChatMessageType.CONSOLE)
 						.runeLiteFormattedMessage(message)
 						.build());
-	}
-
-	@Subscribe
-	public void onHitsplatApplied(HitsplatApplied hitsplatApplied) {
-		Player player = client.getLocalPlayer(); // get a handle on the player
-		Actor actor = hitsplatApplied.getActor(); // get a handle on the attacked entity
-		if (!(actor instanceof NPC)) { return; } // only look for hitsplats applied to NPCs
-
-		Hitsplat hitsplat = hitsplatApplied.getHitsplat(); // get a handle on the hitsplat
-
-		if (hitsplat.isMine()) { // if it's our own hitsplat...
-			int hit = hitsplat.getAmount();
-		}
-	}
-
-	public int getInteractingNpcIndex() { // If the player is interacting with an NPC, returns its NPC Index. If not, return -1.
-		Player player = client.getLocalPlayer();
-		if (player == null) return -1;
-		PlayerComposition playerComposition = player.getPlayerComposition();
-		if (playerComposition == null) return -1;
-
-		Actor interacted = player.getInteracting();
-		if (interacted instanceof NPC) {
-			NPC interactedNPC = (NPC) interacted;
-			return interactedNPC.getIndex();
-		}
-		return -1;
 	}
 
 	public int getItemStyleBonus(int id, EquipmentStat equipmentStat) { // Takes an item ID and returns that item's bonus for the specified equipment stat.
@@ -148,9 +111,16 @@ public class LuckTrackerPlugin extends Plugin {
 		return -999;
 	}
 
-	public void dummy() {
-		client.getVar(VarPlayer.ATTACK_STYLE);
-		client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
+	public double getActivePrayerModifiers(PrayerAttribute prayerAttribute) { // For a given PrayerAttribute -- go through all active prayers and figure out the total modifier to that PrayerAttribute
+		double mod = 1.0D;
+		for (Prayer prayer: Prayer.values()) {
+			if (client.getVarbitValue(prayer.getVarbit()) > 0) { // Using a custom Prayer class, so we lost access to client.getPrayerActive() or whatever it is
+//				sendChatMessage(String.format("Idenfitied active prayer varbit %d", prayer.getVarbit()));
+				mod += prayer.getPrayerAttributeMod(prayerAttribute);
+			}
+		}
+//		sendChatMessage(String.format("Total prayer mod for %s is %f", prayerAttribute.getName(), mod));
+		return mod;
 	}
 
 	public int getEquipmentStyleBonus(EquipmentStat equipmentStat) { // Calculates the total bonus for a given equipment stat (e.g. ACRUSH, PRAYER, DSLASH...)
@@ -170,29 +140,102 @@ public class LuckTrackerPlugin extends Plugin {
 		return bonus;
 	}
 
+	// region Utility Functions -- Generic
+	public int calcBasicDefenceRoll(int defLvl, int styleDefBonus) { // Calculates an NPC's defensive roll.
+		return (defLvl + 9) * (styleDefBonus + 64);
+	} // endregion
+
+	// region Utility Functions -- Melee
 	public int calcEffectiveMeleeLevel(int visibleLvl, double prayerBonus, int styleBonus, boolean voidArmor) { // Calculates effective attack or strength level.
 		int effLvl = ((int) (visibleLvl * prayerBonus)) + styleBonus + 8; // Internal cast necessary; int * double promotes to double
 		return voidArmor ? ((int) (effLvl * 1.1D)) : effLvl;
 	}
 
-	public int calcBasicAttackRoll(int effAttLvl, int attBonus, double tgtBonus) { // Calculate attack roll.
+	public int calcBasicMeleeAttackRoll(int effAttLvl, int attBonus, double tgtBonus) { // Calculate attack roll.
 		return (int) (effAttLvl * (attBonus + 64) * tgtBonus);
-	}
-
-	public int calcBasicDefenceRoll(int defLvl, int styleDefBonus) { // Calculates an NPC's defensive roll.
-		return (defLvl + 9) * (styleDefBonus + 64);
 	}
 
 	public int calcBasicMaxHit(int effStrLvl, int strBonus, double tgtBonus) { // Calculates max hit based on effective strength level and strength bonus (from equipment stats).
 		return (int) (tgtBonus * ((effStrLvl * (strBonus + 64) + 320) / 640)); // Internal cast not necessary; int division will automatically return floored int
+	} // endregion
+
+	// region Utility Functions -- Range
+	public int calcEffectiveRangeAttack(int visibleLvl, double prayerBonus, int styleBonus, boolean voidArmor, boolean voidEliteArmor) {
+		double voidBonus;
+		if (voidEliteArmor || voidArmor) voidBonus = 1.1;
+		else voidBonus = 1;
+		return (int) (voidBonus * (((int) (visibleLvl * prayerBonus)) + styleBonus + 8));
 	}
+
+	public int calcEffectiveRangeStrength(int effRangeStr, double prayerBonus, int styleBonus, boolean voidArmor, boolean voidEliteArmor) {
+		double voidBonus;
+		if (voidEliteArmor) voidBonus = 1.125;
+		else if (voidArmor) voidBonus = 1.1;
+		else voidBonus = 1;
+		return (int) (voidBonus * (((int) (effRangeStr * prayerBonus)) + styleBonus + 8));
+	}
+
+	public int calcBasicRangeAttackRoll(int effRangeAtt, int rangeAttBonus, double gearBonus) { // Calculate ranged attack roll.
+		return (int) (effRangeAtt * (rangeAttBonus + 64) * gearBonus);
+	}
+
+	public int calcRangeBasicMaxHit(int effRangeStrength, int rStrBonus, double gearBonus, double specialBonus) {
+		return (int) (specialBonus * ((int) (0.5 + (effRangeStrength * (rStrBonus + 64)) / 640 * gearBonus)));
+	} // endregion
+
+
+	// ************************************************** //
+	// Not pure functions: will still need to pull information from client/player
+	// Pass in equipmentStat and weaponStance where possible, since those must already be calculated anyway
+	// (Otherwise you wouldn't know what type of hit this was)
+
+	private void processMeleeHit(EquipmentStat equipmentStat, WeaponStance weaponStance) {
+
+		boolean voidArmor = false;
+		double tgtBonus = 1.0; // Might need to be 2 diff target bonuses, one for str one for att?
+
+		int effStrLvl = calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.ATTACK), getActivePrayerModifiers(PrayerAttribute.PRAY_STR), weaponStance.getInvisBonus(Skill.STRENGTH), voidArmor);
+		int effAttLvl = calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), voidArmor);
+		int attRoll = calcBasicMeleeAttackRoll(effAttLvl, getEquipmentStyleBonus(equipmentStat), tgtBonus);
+		int maxHit = calcBasicMaxHit(effStrLvl, getEquipmentStyleBonus(EquipmentStat.STR), tgtBonus);
+		sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
+	}
+
+	private void processMagicSpell() {
+		sendChatMessage("processMagicSpell() called");
+	}
+
+	private void processPoweredStaffHit() {
+		sendChatMessage("processPoweredStaffHit() called");
+	}
+
+	private void processRangedHit(EquipmentStat equipmentStat, WeaponStance weaponStance) {
+
+		boolean voidArmor = false;
+		boolean voidEliteArmor = false;
+		double gearBonus = 1.0;
+		double specialBonus = 1.0;
+
+		int effRangeAtt = calcEffectiveRangeAttack(client.getBoostedSkillLevel(Skill.RANGED), getActivePrayerModifiers(PrayerAttribute.PRAY_RATT), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
+		int effRangeStr = calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
+		int attRoll = calcBasicRangeAttackRoll(effRangeAtt, getEquipmentStyleBonus(equipmentStat), gearBonus);
+		int maxHit = calcRangeBasicMaxHit(effRangeStr, getEquipmentStyleBonus(EquipmentStat.RSTR), gearBonus, specialBonus);
+		sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
+	}
+
+	// ************************************************** //
+
 
 	@Subscribe
 	private void onAnimationChanged(AnimationChanged e) { // Main hook for identifying when we perform an attack: our animation changes. Will use PVMTickCounter's utility to determine
 
-		if (!(e.getActor() instanceof Player)) return;
+		// ** Get handle on player and animation, ensure it's us ** //
 
-		// TODO hook up salamander blaze and flare; no animation on player, but it spawns G = 952
+		// TODO hook up salamander blaze and flare; no animation on player, but it spawns G = 952.
+		//  Also potentially a lot of other attack animations.
+		// 	See tickCounterUtil -> aniTM.
+
+		if (!(e.getActor() instanceof Player)) return;
 
 		Player p = (Player) e.getActor();
 		if (p != client.getLocalPlayer()) return;
@@ -202,36 +245,41 @@ public class LuckTrackerPlugin extends Plugin {
 		PlayerComposition pc = p.getPlayerComposition();
 		if (p.getPlayerComposition() == null) return;
 
+		// ************************************************** //
+
 		int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
 		int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
 
-		WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId);
-		AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId);
-		EquipmentStat equipmentStat = attackStyle.getEquipmentStat();
+		WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId); // Determine weapon stance (Controlled, Aggressive, Rapid, etc.)
+		AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId); // Determine if we're using slash, crush, stab, range, or magic based on the weapon type and current stance
+		EquipmentStat equipmentStat = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
 
-		boolean wearingVoid = false;
-		double prayerBonus = 1.0D;
-		int visibleLvl = 99;
+		// TODO Casting a spell will take whatever stance is currently active...
+		//		Which is only accurate if autocasting.
+		//		For casting spells specifically, will probably need to short circuit based on animation?
 
-		sendChatMessage(String.format("Weapon stance: %s", weaponStance.getName()));
+		if (weaponStance == WeaponStance.CASTING || weaponStance == WeaponStance.DEFENSIVE_CASTING)
+		{
+			processMagicSpell();
+		}
+		else if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE)
+		{
+			processPoweredStaffHit();
+		}
+		else if (weaponStance == WeaponStance.RANGE_ACCURATE || weaponStance == WeaponStance.RANGE_LONGRANGE || weaponStance == WeaponStance.RAPID)
+		{
+			processRangedHit(equipmentStat, weaponStance);
+		}
+		else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED)
+		{
+			processMeleeHit(equipmentStat, weaponStance);
+		}
 
-		int attStanceBonus = weaponStance.getInvisBonus(Skill.ATTACK);
-		int strStanceBonus = weaponStance.getInvisBonus(Skill.STRENGTH);
-		int attBonus = getEquipmentStyleBonus(equipmentStat);
-		int effAttLvl = calcEffectiveMeleeLevel(visibleLvl, prayerBonus, 0, wearingVoid);
-		int attRoll = calcBasicAttackRoll(effAttLvl, attBonus, 1.0D);
+//		sendChatMessage(String.format("Weapon stance: %s", weaponStance.getName()));
 
-		String attackStyleString = attackStyle.getName();
 
-		sendChatMessage(String.format("Invisible ATT bonus = %d / Invisible STR bonus = %d", attStanceBonus, strStanceBonus));
-		sendChatMessage(String.format("effAttLvl = %d / Attack roll = %d", effAttLvl, attRoll));
 
-//		sendChatMessage(String.format("--Attack style name is %s", attackStyleString));
-		// sendChatMessage(String.format("--Offensive slash bonus is %d", getEquipmentStyleBonus(EquipmentStat.ASLASH)));
-		// sendChatMessage(String.format("Defensive magic bonus is %d", getEquipmentStyleBonus(EquipmentStat.DMAGIC)));
-		// sendChatMessage(String.format("ASPEED is %d", getEquipmentStyleBonus(EquipmentStat.ASPEED)));
-		// sendChatMessage(String.format("Prayer bonus is %d", getEquipmentStyleBonus(EquipmentStat.PRAYER)));
-
+//		sendChatMessage(String.format("Invisible ATT bonus = %d / Invisible STR bonus = %d", weaponStance.getInvisBonus(Skill.ATTACK), strStanceBonus));
 
 		// Calculate damage distribution
 
