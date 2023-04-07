@@ -53,11 +53,11 @@ public class LuckTrackerUtil {
         return (defLvl + 9) * (styleDefBonus + 64);
     }
 
-    public static float getHitChance(int attRoll, int defRoll) {
-        float fAttRoll = (float) attRoll;
-        float fDefRoll = (float) defRoll;
-        if (fAttRoll > fDefRoll) { return (1.0f - (fDefRoll + 2.0f) / (2.0f * (fAttRoll + 1.0f))); }
-        else { return (fAttRoll / (2.0f * (fDefRoll + 1.0f))); }
+    public static double getHitChance(int attRoll, int defRoll) {
+        double fAttRoll = (double) attRoll;
+        double fDefRoll = (double) defRoll;
+        if (fAttRoll > fDefRoll) { return (1.0D - (fDefRoll + 2.0D) / (2.0D * (fAttRoll + 1.0D))); }
+        else { return (fAttRoll / (2.0D * (fDefRoll + 1.0D))); }
     }
     // endregion
 

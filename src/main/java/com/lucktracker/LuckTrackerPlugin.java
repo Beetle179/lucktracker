@@ -210,7 +210,7 @@ public class LuckTrackerPlugin extends Plugin {
 
 		UTIL.sendChatMessage(String.format("%s vs. %s -- Attack roll: %d | Defense roll: %d | Hit chance: %f | Max hit: %d", equipmentStat, opponentDefenseStat, attack.getAttRoll(), npcDefRoll, LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit()));
 
-		// Calculate damage distribution
-
+		HitDist hitDist = new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit());
+		UTIL.sendChatMessage(String.format("Average damage: %f", hitDist.getAvgDmg()));
 	}
 }
