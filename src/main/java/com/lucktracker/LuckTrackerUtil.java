@@ -96,7 +96,8 @@ public class LuckTrackerUtil {
     }
 
     public static int calcRangeBasicMaxHit(int effRangeStrength, int rStrBonus, double gearBonus, double specialBonus) {
-        return (int) (specialBonus * ((int) (0.5 + (effRangeStrength * (rStrBonus + 64)) / 640 * gearBonus)));
+        System.out.print(String.format("EffRngStr = %d, rStrBonus = %d, gearBonus = %f, specialBonus = %f", effRangeStrength, rStrBonus, gearBonus, specialBonus));
+        return (int) (specialBonus * (int) ((double) ((64 + rStrBonus) * (effRangeStrength)) / 640.0D * gearBonus + 0.5));
     } // endregion
 
     // region NPC Utility Functions
@@ -128,30 +129,22 @@ public class LuckTrackerUtil {
         return mod;
     }
 
-    public int getEquipmentStyleBonus(EquipmentStat equipmentStat) { // Calculates the total bonus for a given equipment stat (e.g. ACRUSH, PRAYER, DSLASH...)
+    public int getEquipmentStyleBonus(Item[] wornItems, EquipmentStat equipmentStat) { // Calculates the total bonus for a given equipment stat (e.g. ACRUSH, PRAYER, DSLASH...)
 
         // TODO Blowpipe; need a plugin setting to identify dart type and add it to RSTR
 
-        Player player = client.getLocalPlayer();
-        if (player == null) return -999;
-        PlayerComposition playerComposition = player.getPlayerComposition();
-        if (playerComposition == null) return -999;
-
-        int[] equippedItems = playerComposition.getEquipmentIds();
         int bonus = 0;
 
-        for (int id : equippedItems) {
-            if (id < 512) continue; // Not a valid item
-            id -= 512; // I know this seems weird after the last line... but convert item ID to proper value
-//            System.out.print(String.format("%d || ", id));
-            System.out.print(String.format("%s || ", itemManager.getItemComposition(id).getName()));
+        for (Item item : wornItems) {
+            int id = item.getId();
+            if (id < 0) continue; // No item in this slot
             bonus += getItemStyleBonus(id, equipmentStat);
         }
         return bonus;
     }
 
     public int getItemStyleBonus(int id, EquipmentStat equipmentStat) { // Takes an item ID and returns that item's bonus for the specified equipment stat.
-        ItemEquipmentStats stats = itemManager.getItemStats(id, true).getEquipment();
+        ItemEquipmentStats stats = itemManager.getItemStats(id, false).getEquipment();
         if (stats == null) return -999;
         switch(equipmentStat) {
             case ACRUSH: return stats.getAcrush();

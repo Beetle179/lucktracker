@@ -52,6 +52,7 @@ public class LuckTrackerPlugin extends Plugin {
 	private Actor lastInteracting; // Keep track of targetted NPC; will update every game tick
 	private Monsters monsterTable;
 	private LuckTrackerUtil UTIL;
+	private Item[] wornItems;
 
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
@@ -73,8 +74,20 @@ public class LuckTrackerPlugin extends Plugin {
 		UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager);
 	}
 
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		if (event.getItemContainer() != client.getItemContainer(InventoryID.EQUIPMENT))
+		{
+			return;
+		}
+
+		wornItems = event.getItemContainer().getItems();
+	}
+
 	@Override
 	protected void shutDown() {
+		System.out.println("Dummy statement");
 		assert true;
 	}
 
@@ -97,8 +110,8 @@ public class LuckTrackerPlugin extends Plugin {
 
 		int effStrLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.ATTACK), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_STR), weaponStance.getInvisBonus(Skill.STRENGTH), voidArmor);
 		int effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), voidArmor);
-		int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(equipmentStat), tgtBonus);
-		int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(EquipmentStat.STR), tgtBonus);
+		int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(wornItems, equipmentStat), tgtBonus);
+		int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.STR), tgtBonus);
 //		UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
 
 		return new Attack(attRoll, maxHit);
@@ -123,10 +136,10 @@ public class LuckTrackerPlugin extends Plugin {
 
 		int effRangeAtt = LuckTrackerUtil.calcEffectiveRangeAttack(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RATT), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
 		int effRangeStr = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
-		int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(equipmentStat), gearBonus);
-		int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(EquipmentStat.RSTR), gearBonus, specialBonus);
-		UTIL.sendChatMessage(String.format("RSTR = ", UTIL.getEquipmentStyleBonus(EquipmentStat.RSTR)));
-//		UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
+		int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(wornItems, equipmentStat), gearBonus);
+		int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.RSTR), gearBonus, specialBonus);
+		UTIL.sendChatMessage(String.format("RSTR = %d", UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.RSTR)));
+		UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
 		return new Attack(attRoll, maxHit);
 	}
 
