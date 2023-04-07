@@ -8,7 +8,7 @@ import java.util.List;
 public class MonsterData {
     private final String name;
     private final String[] attributes; //undead, draconic, etc
-    private final int size, hitpoints;
+    private final int id, size, hitpoints;
     private final int att, str, def, mage, range; //levels
     private final int attbns, arange, amagic; //offensive boosts (corresponds to player's arange, amagic, attbns = (aslash, astab, acrush))
     private final int strbns, rngbns, mbns; //more offensive boosts: strength/max hits
@@ -17,7 +17,7 @@ public class MonsterData {
     public MonsterData(
             String name,
             String[] attributes,
-            int size, int hitpoints,
+            int id, int size, int hitpoints,
             int att, int str, int def, int mage, int range,
             int attbns, int arange, int amagic,
             int strbns, int rngbns, int mbns,
@@ -26,6 +26,7 @@ public class MonsterData {
     {
         this.name = name;
         this.attributes = attributes;
+        this.id = id;
         this.size = size;
         this.hitpoints = hitpoints;
         this.att = att;
@@ -48,6 +49,7 @@ public class MonsterData {
 
     public String getName() { return this.name; }
     public String[] getAttributes() { return this.attributes; }
+    public int getId() { return this.id; }
     public int getSize() { return this.size; }
     public int getHitpoints() { return this.hitpoints; }
     public int getAttLvl() { return this.att; }

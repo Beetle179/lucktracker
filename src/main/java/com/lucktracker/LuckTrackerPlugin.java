@@ -44,6 +44,7 @@ import net.runelite.http.api.item.ItemEquipmentStats;
 import org.xml.sax.ErrorHandler;
 
 import javax.inject.Inject;
+import java.io.File;
 
 @PluginDescriptor(
 		name = "Luck Tracker",
@@ -267,6 +268,7 @@ public class LuckTrackerPlugin extends Plugin {
 
 	@Subscribe
 	public void onGameTick(GameTick gameTick) {
+
 		Player player = client.getLocalPlayer();
 		if (player == null) return;
 
@@ -276,26 +278,26 @@ public class LuckTrackerPlugin extends Plugin {
 		lastInteracting = interactingActor;
 
 		// DEBUG STUFF
-//		int npcId = ((NPC) lastInteracting).getId();
-//		MonsterData npcData = monsterTable.getMonsterData(npcId);
-//
-//		String npcName;
-//		int npcDcrush;
-//		try {
-//			npcName = npcData.getName();
-//		}
-//		catch (Exception asdf) {
-//			npcName = "ERROR";
-//		}
-//
-//		try {
-//			npcDcrush = npcData.getDCrush();
-//		}
-//		catch (Exception asdf) {
-//			npcDcrush = -999;
-//		}
-//
-//		sendChatMessage(String.format("ID: %d || Monster: %s || Crush defense: %d", npcId, npcName, npcDcrush));
+		int npcId = ((NPC) lastInteracting).getId();
+		MonsterData npcData = monsterTable.getMonsterData(npcId);
+
+		String npcName;
+		int npcDcrush;
+		try {
+			npcName = npcData.getName();
+		}
+		catch (Exception asdf) {
+			npcName = "ERROR";
+		}
+
+		try {
+			npcDcrush = npcData.getDCrush();
+		}
+		catch (Exception asdf) {
+			npcDcrush = -999;
+		}
+
+		sendChatMessage(String.format("ID: %d || Monster: %s || Crush defense: %d", npcId, npcName, npcDcrush));
 	}
 
 
