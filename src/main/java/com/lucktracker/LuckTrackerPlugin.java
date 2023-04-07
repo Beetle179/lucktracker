@@ -105,7 +105,6 @@ public class LuckTrackerPlugin extends Plugin {
 		// Load the side panel
 		final BufferedImage navIcon = ImageUtil.loadImageResource(this.getClass(), "/info_icon.png"); // Load the icon for the nav button (in LuckTrackerPlugin's resources subfolder)
 		panel = injector.getInstance(LuckTrackerPanel.class); // Create an instance of the LuckTrackerPanel
-		panel.init(); // Run the init, which sets up reset button ( + damage histogram and data in the future)
 		navButton = NavigationButton.builder() // Create a nav button that we can add to the toolbar...
 				.tooltip("Luck Tracker")
 				.icon(navIcon)
@@ -132,6 +131,8 @@ public class LuckTrackerPlugin extends Plugin {
 	protected void shutDown() {
 		assert true;
 	}
+
+	protected void resetRunningHitDist() { this.runningHitDist = new HitDist(); }
 
 	@Subscribe
 	public void onGameTick(GameTick gameTick) {
