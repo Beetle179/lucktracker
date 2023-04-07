@@ -36,9 +36,12 @@ import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.game.NPCManager;
+import net.runelite.client.game.NpcInfo;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.http.api.item.ItemEquipmentStats;
+import org.xml.sax.ErrorHandler;
 
 import javax.inject.Inject;
 
@@ -51,13 +54,16 @@ import javax.inject.Inject;
 
 public class LuckTrackerPlugin extends Plugin {
 
-	private TickCounterUtil tickCounterUtil;
+	private TickCounterUtil tickCounterUtil; // Used for identifying attack animations
+	private Actor lastInteracting; // Keep track of targetted NPC; will update every game tick
+	private Monsters monsterTable;
 
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
 	@Inject private LuckTrackerConfig config;
 	@Inject private ItemManager itemManager;
 	@Inject private ChatMessageManager chatMessageManager;
+	@Inject private NPCManager npcManager;
 
 	@Provides
 	LuckTrackerConfig provideConfig(ConfigManager configManager) {
@@ -68,6 +74,7 @@ public class LuckTrackerPlugin extends Plugin {
 	protected void startUp() throws Exception {
 		tickCounterUtil = new TickCounterUtil(); // Utility ripped from PVMTickCounter plugin: dictionary of (animation_ID, tick_duration) pairs. Used for ID'ing player attack animations.
 		tickCounterUtil.init();
+		monsterTable = new Monsters();
 	}
 
 	@Override
@@ -86,6 +93,65 @@ public class LuckTrackerPlugin extends Plugin {
 						.type(ChatMessageType.CONSOLE)
 						.runeLiteFormattedMessage(message)
 						.build());
+	}
+
+	@Subscribe
+	public void onInteractingChanged(InteractingChanged event) {
+		// TODO set lastInteracting here? Not sure if these fires before onGameTick / if this is upstream of onAnimationChange
+	}
+
+	// region NPC Utility Functions
+	private int getNpcCurrentHp() { // Logic from OpponentInfo plugin
+		NPC interactingNpc = (NPC) lastInteracting;
+		int healthRatio = interactingNpc.getHealthRatio();
+		int healthScale = interactingNpc.getHealthScale();
+		int maxHealth = npcManager.getHealth(interactingNpc.getId());
+		int minHealth = maxHealth;
+		if (healthScale > 1) {
+			if (healthRatio > 1) {
+				minHealth = (maxHealth * (healthRatio - 1) + healthScale - 2) / (healthScale - 1);
+			}
+			maxHealth = (maxHealth * healthRatio - 1) / (healthScale - 1);
+		}
+
+		int currentHp = (minHealth + maxHealth + 1) / 2;
+
+		return currentHp;
+	}
+	// endregion
+
+	// region Equipment & Prayer Utility Functions
+
+	public double getActivePrayerModifiers(PrayerAttribute prayerAttribute) { // For a given PrayerAttribute -- go through all active prayers and figure out the total modifier to that PrayerAttribute
+		double mod = 1.0D;
+		for (Prayer prayer: Prayer.values()) {
+			if (client.getVarbitValue(prayer.getVarbit()) > 0) { // Using a custom Prayer class, so we lost access to client.getPrayerActive() or whatever it is
+//				sendChatMessage(String.format("Idenfitied active prayer varbit %d", prayer.getVarbit()));
+				mod += prayer.getPrayerAttributeMod(prayerAttribute);
+			}
+		}
+//		sendChatMessage(String.format("Total prayer mod for %s is %f", prayerAttribute.getName(), mod));
+		return mod;
+	}
+
+	public int getEquipmentStyleBonus(EquipmentStat equipmentStat) { // Calculates the total bonus for a given equipment stat (e.g. ACRUSH, PRAYER, DSLASH...)
+
+		// TODO Blowpipe; need a plugin setting to identify dart type and add it to RSTR
+
+		Player player = client.getLocalPlayer();
+		if (player == null) return -999;
+		PlayerComposition playerComposition = player.getPlayerComposition();
+		if (playerComposition == null) return -999;
+
+		int[] equippedItems = playerComposition.getEquipmentIds();
+		int bonus = 0;
+
+		for (int id : equippedItems) {
+			if (id < 512) continue; // Not a valid item
+			id -= 512; // I know this seems weird after the last line... but convert item ID to proper value
+			bonus += getItemStyleBonus(id, equipmentStat);
+		}
+		return bonus;
 	}
 
 	public int getItemStyleBonus(int id, EquipmentStat equipmentStat) { // Takes an item ID and returns that item's bonus for the specified equipment stat.
@@ -111,41 +177,14 @@ public class LuckTrackerPlugin extends Plugin {
 		return -999;
 	}
 
-	public double getActivePrayerModifiers(PrayerAttribute prayerAttribute) { // For a given PrayerAttribute -- go through all active prayers and figure out the total modifier to that PrayerAttribute
-		double mod = 1.0D;
-		for (Prayer prayer: Prayer.values()) {
-			if (client.getVarbitValue(prayer.getVarbit()) > 0) { // Using a custom Prayer class, so we lost access to client.getPrayerActive() or whatever it is
-//				sendChatMessage(String.format("Idenfitied active prayer varbit %d", prayer.getVarbit()));
-				mod += prayer.getPrayerAttributeMod(prayerAttribute);
-			}
-		}
-//		sendChatMessage(String.format("Total prayer mod for %s is %f", prayerAttribute.getName(), mod));
-		return mod;
-	}
+	// endregion
 
-	public int getEquipmentStyleBonus(EquipmentStat equipmentStat) { // Calculates the total bonus for a given equipment stat (e.g. ACRUSH, PRAYER, DSLASH...)
-		Player player = client.getLocalPlayer();
-		if (player == null) return -999;
-		PlayerComposition playerComposition = player.getPlayerComposition();
-		if (playerComposition == null) return -999;
-
-		int[] equippedItems = playerComposition.getEquipmentIds();
-		int bonus = 0;
-
-		for (int id : equippedItems) {
-			if (id < 512) continue; // Not a valid item
-			id -= 512; // I know this seems weird after the last line... but convert item ID to proper value
-			bonus += getItemStyleBonus(id, equipmentStat);
-		}
-		return bonus;
-	}
-
-	// region Utility Functions -- Generic
+	// region Combat Utility Functions -- Generic
 	public int calcBasicDefenceRoll(int defLvl, int styleDefBonus) { // Calculates an NPC's defensive roll.
 		return (defLvl + 9) * (styleDefBonus + 64);
 	} // endregion
 
-	// region Utility Functions -- Melee
+	// region Combat Utility Functions -- Melee
 	public int calcEffectiveMeleeLevel(int visibleLvl, double prayerBonus, int styleBonus, boolean voidArmor) { // Calculates effective attack or strength level.
 		int effLvl = ((int) (visibleLvl * prayerBonus)) + styleBonus + 8; // Internal cast necessary; int * double promotes to double
 		return voidArmor ? ((int) (effLvl * 1.1D)) : effLvl;
@@ -159,7 +198,7 @@ public class LuckTrackerPlugin extends Plugin {
 		return (int) (tgtBonus * ((effStrLvl * (strBonus + 64) + 320) / 640)); // Internal cast not necessary; int division will automatically return floored int
 	} // endregion
 
-	// region Utility Functions -- Range
+	// region Combat Utility Functions -- Range
 	public int calcEffectiveRangeAttack(int visibleLvl, double prayerBonus, int styleBonus, boolean voidArmor, boolean voidEliteArmor) {
 		double voidBonus;
 		if (voidEliteArmor || voidArmor) voidBonus = 1.1;
@@ -183,8 +222,8 @@ public class LuckTrackerPlugin extends Plugin {
 		return (int) (specialBonus * ((int) (0.5 + (effRangeStrength * (rStrBonus + 64)) / 640 * gearBonus)));
 	} // endregion
 
-
 	// ************************************************** //
+	// region Hit Processing Functions
 	// Not pure functions: will still need to pull information from client/player
 	// Pass in equipmentStat and weaponStance where possible, since those must already be calculated anyway
 	// (Otherwise you wouldn't know what type of hit this was)
@@ -220,11 +259,49 @@ public class LuckTrackerPlugin extends Plugin {
 		int effRangeStr = calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
 		int attRoll = calcBasicRangeAttackRoll(effRangeAtt, getEquipmentStyleBonus(equipmentStat), gearBonus);
 		int maxHit = calcRangeBasicMaxHit(effRangeStr, getEquipmentStyleBonus(EquipmentStat.RSTR), gearBonus, specialBonus);
-		sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
+//		sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
 	}
 
+	// endregion
 	// ************************************************** //
 
+	@Subscribe
+	public void onGameTick(GameTick gameTick) {
+		Player player = client.getLocalPlayer();
+		if (player == null) return;
+
+		// Update currently interacting NPC
+		Actor interactingActor = player.getInteracting();
+		if (!(interactingActor instanceof NPC)) return;
+		lastInteracting = interactingActor;
+
+		// DEBUG STUFF
+//		int npcId = ((NPC) lastInteracting).getId();
+//		MonsterData npcData = monsterTable.getMonsterData(npcId);
+//
+//		String npcName;
+//		int npcDcrush;
+//		try {
+//			npcName = npcData.getName();
+//		}
+//		catch (Exception asdf) {
+//			npcName = "ERROR";
+//		}
+//
+//		try {
+//			npcDcrush = npcData.getDCrush();
+//		}
+//		catch (Exception asdf) {
+//			npcDcrush = -999;
+//		}
+//
+//		sendChatMessage(String.format("ID: %d || Monster: %s || Crush defense: %d", npcId, npcName, npcDcrush));
+	}
+
+
+	// TODO most weapon anims are 2 ticks; so 2t weapons won't get tracked properly using just onAnimationChanged
+	//		Ian idea: instead of tracking onAnimationChanged, keep track of player's animation and re-set it every 2 ticks
+	//		Alternative: PVMTickCounter uses an "IsBPing" flag
 
 	@Subscribe
 	private void onAnimationChanged(AnimationChanged e) { // Main hook for identifying when we perform an attack: our animation changes. Will use PVMTickCounter's utility to determine
@@ -276,9 +353,6 @@ public class LuckTrackerPlugin extends Plugin {
 		}
 
 //		sendChatMessage(String.format("Weapon stance: %s", weaponStance.getName()));
-
-
-
 //		sendChatMessage(String.format("Invisible ATT bonus = %d / Invisible STR bonus = %d", weaponStance.getInvisBonus(Skill.ATTACK), strStanceBonus));
 
 		// Calculate damage distribution
