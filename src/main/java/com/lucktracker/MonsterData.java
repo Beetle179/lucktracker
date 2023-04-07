@@ -68,4 +68,17 @@ public class MonsterData {
     public int getDCrush() { return this.dcrush; }
     public int getDMagic() { return this.dmagic; }
     public int getDRange() { return this.drange; }
+
+    public int calcDefenseRoll(EquipmentStat stat) {
+        int defRoll;
+        switch (stat) {
+            case DCRUSH: defRoll = LuckTrackerUtil.calcBasicDefenceRoll(this.getDefLvl(), this.getDCrush()); break;
+            case DSLASH: defRoll = LuckTrackerUtil.calcBasicDefenceRoll(this.getDefLvl(), this.getDSlash()); break;
+            case DSTAB: defRoll = LuckTrackerUtil.calcBasicDefenceRoll(this.getDefLvl(), this.getDStab()); break;
+            case DRANGE: defRoll = LuckTrackerUtil.calcBasicDefenceRoll(this.getDefLvl(), this.getDRange()); break;
+            case DMAGIC: defRoll = LuckTrackerUtil.calcBasicDefenceRoll(this.getDefLvl(), this.getDMagic()); break;
+            default: System.out.println("FAILED TO IDENTIFY STAT"); defRoll = -1;
+        }
+        return defRoll;
+    }
 }

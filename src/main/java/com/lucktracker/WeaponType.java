@@ -25,135 +25,13 @@
 package com.lucktracker;
 
 import com.google.common.collect.ImmutableMap;
-import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.Skill;
-
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 
-// Self-import stance and style names, just to avoid having to prefix every time...
-import static com.lucktracker.WeaponStance.ACCURATE; // Import from.... ourselves?
-import static com.lucktracker.WeaponStance.AGGRESSIVE;
-import static com.lucktracker.WeaponStance.DEFENSIVE;
-import static com.lucktracker.WeaponStance.CONTROLLED;
-import static com.lucktracker.WeaponStance.RAPID;
-import static com.lucktracker.WeaponStance.RANGE_ACCURATE;
-import static com.lucktracker.WeaponStance.RANGE_LONGRANGE;
-import static com.lucktracker.WeaponStance.POWERED_STAFF_LONGRANGE;
-import static com.lucktracker.WeaponStance.POWERED_STAFF_ACCURATE;
-import static com.lucktracker.WeaponStance.CASTING;
-import static com.lucktracker.WeaponStance.DEFENSIVE_CASTING;
-import static com.lucktracker.WeaponStance.OTHER;
-import static com.lucktracker.AttackStyle.STAB;
-import static com.lucktracker.AttackStyle.SLASH;
-import static com.lucktracker.AttackStyle.CRUSH;
-import static com.lucktracker.AttackStyle.MAGIC;
-import static com.lucktracker.AttackStyle.RANGE;
-import static com.lucktracker.AttackStyle.UNKNOWN;
+import static com.lucktracker.AttackStyle.*;
+import static com.lucktracker.WeaponStance.*;
 
-import static com.lucktracker.EquipmentStat.ASTAB;
-import static com.lucktracker.EquipmentStat.ASLASH;
-import static com.lucktracker.EquipmentStat.ACRUSH;
-import static com.lucktracker.EquipmentStat.AMAGIC;
-import static com.lucktracker.EquipmentStat.ARANGE;
-import static com.lucktracker.EquipmentStat.DSTAB;
-import static com.lucktracker.EquipmentStat.DSLASH;
-import static com.lucktracker.EquipmentStat.DCRUSH;
-import static com.lucktracker.EquipmentStat.DMAGIC;
-import static com.lucktracker.EquipmentStat.DRANGE;
-import static com.lucktracker.EquipmentStat.STR;
-import static com.lucktracker.EquipmentStat.RSTR;
-import static com.lucktracker.EquipmentStat.MDMG;
-import static com.lucktracker.EquipmentStat.PRAYER;
-import static com.lucktracker.EquipmentStat.ASPEED;
 
-enum EquipmentStat // Equipment bonuses
-{
-    ASTAB,
-    ASLASH,
-    ACRUSH,
-    AMAGIC,
-    ARANGE,
-    DSTAB,
-    DSLASH,
-    DCRUSH,
-    DMAGIC,
-    DRANGE,
-    STR,
-    RSTR,
-    MDMG,
-    PRAYER,
-    ASPEED,
-}
-
-enum AttackStyle // Style of attacks -- slash, stab, crush, magic, or range
-{
-    STAB("Stab", ASTAB),
-    SLASH("Slash", ASLASH),
-    CRUSH("Crush", ACRUSH),
-    MAGIC("Magic", AMAGIC),
-    RANGE("Range", ARANGE),
-    UNKNOWN("Unknown", null);
-
-    private final String name;
-    private final EquipmentStat equipmentStat;
-
-    AttackStyle(String name, EquipmentStat equipmentStat) {
-        this.name = name;
-        this.equipmentStat = equipmentStat;
-    }
-
-    public String getName() {
-        return this.name;
-    }
-
-    public EquipmentStat getEquipmentStat() {
-        return this.equipmentStat;
-    }
-}
-
-enum WeaponStance // Stances: grant invisible skill bonuses to att/str/def/range/mage.
-{
-    // STANCE(stanceName, [skillBonuses], ...Skills)
-    ACCURATE("Accurate", new int[] {3}, Skill.ATTACK),
-    AGGRESSIVE("Aggressive", new int[] {3}, Skill.STRENGTH),
-    DEFENSIVE("Defensive", new int[] {3}, Skill.DEFENCE),
-    CONTROLLED("Controlled", new int[] {1, 1, 1}, Skill.ATTACK, Skill.STRENGTH, Skill.DEFENCE),
-    RAPID("Rapid", new int[] {}),
-    RANGE_ACCURATE("Range_Accurate", new int[] {3}, Skill.RANGED),
-    RANGE_LONGRANGE("Range_Longrange", new int[] {0, 3}, Skill.RANGED, Skill.DEFENCE),
-    POWERED_STAFF_LONGRANGE("Powered_Staff_Longrange", new int[] {1, 3}, Skill.MAGIC, Skill.DEFENCE),
-    POWERED_STAFF_ACCURATE("Powered_Staff_Accurate", new int[] {3}, Skill.MAGIC),
-    CASTING("Casting", new int[] {0}, Skill.MAGIC),
-    DEFENSIVE_CASTING("Defensive Casting", new int[] {0, 0}, Skill.MAGIC, Skill.DEFENCE),
-    OTHER("Other", new int[] {0});
-
-    private final String name;
-    private final int[] invisBonuses;
-    private final List<Skill> skills;
-
-    WeaponStance(String name, int[] invisBonuses, Skill... skills)
-    {
-        this.name = name;
-        this.invisBonuses = invisBonuses;
-        this.skills = Arrays.asList(skills);
-    }
-
-    public String getName() { return this.name; }
-
-    public int getInvisBonus(Skill skill) // Get a skill's invisible bonus from a stance
-    {
-        int indexOfBonus = this.skills.indexOf(skill);
-        if (indexOfBonus == -1) return 0;
-        return this.invisBonuses[indexOfBonus];
-    }
-
-    public List<Skill> getSkills() { return this.skills; }
-}
-
-enum WeaponType // Weapon types: Weapon categories (e.g. 2hander, battleaxe, powered staff)
+public enum WeaponType // Weapon types: Weapon categories (e.g. 2hander, battleaxe, powered staff)
 {
     // WEAPONTYPE([WeaponStances], [AttackStyles])
     UNARMED(new WeaponStance[] {ACCURATE, AGGRESSIVE, null, DEFENSIVE},
@@ -228,7 +106,7 @@ enum WeaponType // Weapon types: Weapon categories (e.g. 2hander, battleaxe, pow
         this.attackStyles = attackStyles;
     }
 
-    static // Construct a map of [index, WeaponType] pairs, for convenience with etraction...
+    static // Construct a map of [index, WeaponType] pairs, for convenience with extraction...
     {
         ImmutableMap.Builder<Integer, WeaponType> builder = new ImmutableMap.Builder<>();
         for (WeaponType weaponTypes : values())

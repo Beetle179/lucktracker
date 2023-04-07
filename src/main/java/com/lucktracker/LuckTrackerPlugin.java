@@ -106,7 +106,7 @@ public class LuckTrackerPlugin extends Plugin {
 		int effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), voidArmor);
 		int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(equipmentStat), tgtBonus);
 		int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(EquipmentStat.STR), tgtBonus);
-		UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
+//		UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
 	}
 
 	private void processMagicSpell() {
@@ -128,7 +128,7 @@ public class LuckTrackerPlugin extends Plugin {
 		int effRangeStr = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), voidArmor, voidEliteArmor);
 		int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(equipmentStat), gearBonus);
 		int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(EquipmentStat.RSTR), gearBonus, specialBonus);
-		UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
+//		UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
 	}
 
 	// endregion
@@ -165,6 +165,7 @@ public class LuckTrackerPlugin extends Plugin {
 		if (p.getPlayerComposition() == null) return;
 
 		// ************************************************** //
+		// Player Attack processing
 
 		int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
 		int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
@@ -172,7 +173,6 @@ public class LuckTrackerPlugin extends Plugin {
 		WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId); // Determine weapon stance (Controlled, Aggressive, Rapid, etc.)
 		AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId); // Determine if we're using slash, crush, stab, range, or magic based on the weapon type and current stance
 		EquipmentStat equipmentStat = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
-		EquipmentStat opponentDefenseStat = LuckTrackerUtil.getDefensiveStat(equipmentStat);
 
 		// TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
 
@@ -193,23 +193,22 @@ public class LuckTrackerPlugin extends Plugin {
 			processMeleeHit(equipmentStat, weaponStance);
 		}
 
-		// DEBUG STUFF
+		// ************************************************** //
+		// NPC Defense processing
+
 		int npcId = ((NPC) lastInteracting).getId();
 		MonsterData npcData = monsterTable.getMonsterData(npcId);
+		EquipmentStat opponentDefenseStat = LuckTrackerUtil.getDefensiveStat(equipmentStat); // Get the defensive stat to generate NPC's defense roll
 
-		if (npcId != -1) {
-			;
+		if (npcData == null) {
+			UTIL.sendChatMessage("UNKNOWN MONSTER");
+			return;
 		}
 
-		String npcName;
-		int npcDcrush;
-		try { npcName = npcData.getName(); }
-		catch (Exception asdf) { npcName = "ERROR"; }
+		String npcName = npcData.getName();
+		int npcDefRoll = npcData.calcDefenseRoll(opponentDefenseStat);
 
-		try { npcDcrush = npcData.getDCrush(); }
-		catch (Exception asdf) { npcDcrush = -999; }
-
-		UTIL.sendChatMessage(String.format("ID: %d || Monster: %s || Crush defense: %d", npcId, npcName, npcDcrush));
+		UTIL.sendChatMessage(String.format("Monster: %s || Def lvl: %d || Defense roll (%s): %d", npcName, npcData.getDefLvl(), opponentDefenseStat.name(), npcDefRoll));
 
 		// Calculate damage distribution
 
