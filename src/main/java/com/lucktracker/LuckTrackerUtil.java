@@ -35,7 +35,7 @@ public class LuckTrackerUtil {
                         .type(ChatMessageType.CONSOLE)
                         .runeLiteFormattedMessage(message)
                         .build());
-    } //endregion
+    }
 
     public static EquipmentStat getDefensiveStat(EquipmentStat offensiveStat) { // when attacking with offensiveStat, determine what defensive stat to roll against
         switch (offensiveStat) {
@@ -46,12 +46,20 @@ public class LuckTrackerUtil {
             case ARANGE: return DRANGE;
             default: return null;
         }
-    }
+    } //endregion
 
     // region Combat Utility Functions -- Generic
     public static int calcBasicDefenceRoll(int defLvl, int styleDefBonus) { // Calculates an NPC's defensive roll.
         return (defLvl + 9) * (styleDefBonus + 64);
-    } // endregion
+    }
+
+    public static float getHitChance(int attRoll, int defRoll) {
+        float fAttRoll = (float) attRoll;
+        float fDefRoll = (float) defRoll;
+        if (fAttRoll > fDefRoll) { return (1.0f - (fDefRoll + 2.0f) / (2.0f * (fAttRoll + 1.0f))); }
+        else { return (fAttRoll / (2.0f * (fDefRoll + 1.0f))); }
+    }
+    // endregion
 
     // region Combat Utility Functions -- Melee
     public static int calcEffectiveMeleeLevel(int visibleLvl, double prayerBonus, int styleBonus, boolean voidArmor) { // Calculates effective attack or strength level.
@@ -110,7 +118,6 @@ public class LuckTrackerUtil {
     } // endregion
 
     // region Equipment & Prayer Utility Functions
-
     public double getActivePrayerModifiers(PrayerAttribute prayerAttribute) { // For a given PrayerAttribute -- go through all active prayers and figure out the total modifier to that PrayerAttribute
         double mod = 1.0D;
         for (Prayer prayer: Prayer.values()) {

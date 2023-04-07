@@ -29,22 +29,15 @@ import com.google.inject.Provides;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
 import net.runelite.client.callback.ClientThread;
-import net.runelite.client.chat.ChatColorType;
-import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
-import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
-import net.runelite.client.game.NpcInfo;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.http.api.item.ItemEquipmentStats;
-import org.xml.sax.ErrorHandler;
 
 import javax.inject.Inject;
-import java.io.File;
 
 @PluginDescriptor(
 		name = "Luck Tracker",
@@ -97,7 +90,7 @@ public class LuckTrackerPlugin extends Plugin {
 	// Pass in equipmentStat and weaponStance where possible, since those must already be calculated anyway
 	// (Otherwise you wouldn't know what type of hit this was)
 
-	private void processMeleeHit(EquipmentStat equipmentStat, WeaponStance weaponStance) {
+	private Attack processMeleeAttack(EquipmentStat equipmentStat, WeaponStance weaponStance) {
 
 		boolean voidArmor = false;
 		double tgtBonus = 1.0; // Might need to be 2 diff target bonuses, one for str one for att?
@@ -107,17 +100,21 @@ public class LuckTrackerPlugin extends Plugin {
 		int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(equipmentStat), tgtBonus);
 		int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(EquipmentStat.STR), tgtBonus);
 //		UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
+
+		return new Attack(attRoll, maxHit);
 	}
 
-	private void processMagicSpell() {
-		UTIL.sendChatMessage("processMagicSpell() called");
+	private Attack processMagicSpellAttack() {
+		UTIL.sendChatMessage("processMagicSpellAttack() called");
+		return new Attack(0, 0);
 	}
 
-	private void processPoweredStaffHit() {
-		UTIL.sendChatMessage("processPoweredStaffHit() called");
+	private Attack processPoweredStaffAttack() {
+		UTIL.sendChatMessage("processPoweredStaffAttack() called");
+		return new Attack(0, 0);
 	}
 
-	private void processRangedHit(EquipmentStat equipmentStat, WeaponStance weaponStance) {
+	private Attack processRangedAttack(EquipmentStat equipmentStat, WeaponStance weaponStance) {
 
 		boolean voidArmor = false;
 		boolean voidEliteArmor = false;
@@ -129,6 +126,7 @@ public class LuckTrackerPlugin extends Plugin {
 		int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(equipmentStat), gearBonus);
 		int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(EquipmentStat.RSTR), gearBonus, specialBonus);
 //		UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
+		return new Attack(attRoll, maxHit);
 	}
 
 	// endregion
@@ -176,22 +174,25 @@ public class LuckTrackerPlugin extends Plugin {
 
 		// TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
 
+		Attack attack;
+
 		if (weaponStance == WeaponStance.CASTING || weaponStance == WeaponStance.DEFENSIVE_CASTING)
 		{
-			processMagicSpell();
+			attack = processMagicSpellAttack();
 		}
 		else if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE)
 		{
-			processPoweredStaffHit();
+			attack = processPoweredStaffAttack();
 		}
 		else if (weaponStance == WeaponStance.RANGE_ACCURATE || weaponStance == WeaponStance.RANGE_LONGRANGE || weaponStance == WeaponStance.RAPID)
 		{
-			processRangedHit(equipmentStat, weaponStance);
+			attack = processRangedAttack(equipmentStat, weaponStance);
 		}
 		else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED)
 		{
-			processMeleeHit(equipmentStat, weaponStance);
+			attack = processMeleeAttack(equipmentStat, weaponStance);
 		}
+		else { attack = new Attack(0, 0); }
 
 		// ************************************************** //
 		// NPC Defense processing
@@ -205,10 +206,9 @@ public class LuckTrackerPlugin extends Plugin {
 			return;
 		}
 
-		String npcName = npcData.getName();
 		int npcDefRoll = npcData.calcDefenseRoll(opponentDefenseStat);
 
-		UTIL.sendChatMessage(String.format("Monster: %s || Def lvl: %d || Defense roll (%s): %d", npcName, npcData.getDefLvl(), opponentDefenseStat.name(), npcDefRoll));
+		UTIL.sendChatMessage(String.format("%s vs. %s -- Attack roll: %d | Defense roll: %d | Hit chance: %f | Max hit: %d", equipmentStat, opponentDefenseStat, attack.getAttRoll(), npcDefRoll, LuckTrackerUtil.getHitChance(attack.getAttRoll(), npcDefRoll), attack.getMaxHit()));
 
 		// Calculate damage distribution
 
