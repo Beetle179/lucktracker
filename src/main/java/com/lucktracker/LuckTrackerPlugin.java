@@ -36,8 +36,13 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.info.InfoPanel;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.ImageUtil;
 
 import javax.inject.Inject;
+import java.awt.image.BufferedImage;
 
 @PluginDescriptor(
 		name = "Luck Tracker",
@@ -47,6 +52,9 @@ import javax.inject.Inject;
 )
 
 public class LuckTrackerPlugin extends Plugin {
+
+	private LuckTrackerPanel panel;
+	private NavigationButton navButton;
 
 	private TickCounterUtil tickCounterUtil; // Used for identifying attack animations
 	private Actor lastInteracting; // Keep track of targetted NPC; will update every game tick
@@ -66,10 +74,13 @@ public class LuckTrackerPlugin extends Plugin {
 	private boolean isWearingRangeEliteVoid;
 	private boolean isWearingMagicEliteVoid;
 
+
 	@Inject
 	private Client client;
 	@Inject
 	private ClientThread clientThread;
+	@Inject
+	private ClientToolbar clientToolbar;
 	@Inject
 	private LuckTrackerConfig config;
 	@Inject
@@ -90,6 +101,18 @@ public class LuckTrackerPlugin extends Plugin {
 		tickCounterUtil.init();
 		monsterTable = new Monsters();
 		UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager);
+
+		// Load the side panel
+		final BufferedImage navIcon = ImageUtil.loadImageResource(this.getClass(), "/info_icon.png"); // Load the icon for the nav button (in LuckTrackerPlugin's resources subfolder)
+		panel = injector.getInstance(LuckTrackerPanel.class); // Create an instance of the LuckTrackerPanel
+		panel.init(); // Run the init, which sets up reset button ( + damage histogram and data in the future)
+		navButton = NavigationButton.builder() // Create a nav button that we can add to the toolbar...
+				.tooltip("Luck Tracker")
+				.icon(navIcon)
+				.priority(10)
+				.panel(panel)
+				.build();
+		clientToolbar.addNavigation(navButton); // Add the nav button to the toolbar
 
 		clientThread.invokeLater(() -> {
 			// Get worn items on startup
