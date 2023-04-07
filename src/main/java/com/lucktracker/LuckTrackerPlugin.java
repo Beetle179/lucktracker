@@ -59,10 +59,6 @@ import java.util.EnumMap;
 
 public class LuckTrackerPlugin extends Plugin {
 
-	static final List<Skill> skills = Arrays.asList(Skill.ATTACK, Skill.STRENGTH, Skill.DEFENCE, Skill.RANGED, Skill.MAGIC);
-	static final List<DmgAttribute> dmgAttributes = Arrays.asList(DmgAttribute.ATTACK, DmgAttribute.STRENGTH, DmgAttribute.DEFENCE, DmgAttribute.RANGED, DmgAttribute.RANGED_DEFENCE, DmgAttribute.RANGED_STRENGTH, DmgAttribute.MAGIC, DmgAttribute.MAGIC_DEFENCE, DmgAttribute.MAGIC_STRENGTH);
-
-	private final Map<Skill, Integer> previousXpMap = new EnumMap<Skill, Integer>(Skill.class); // Create a Map of skill XPs. Can use this to calculate XP drops: XP drop = new xp - existing xp ---> set existing xp = new xp
 	private TickCounterUtil tickCounterUtil;
 
 	@Inject private Client client;
@@ -78,7 +74,6 @@ public class LuckTrackerPlugin extends Plugin {
 
 	@Override
 	protected void startUp() throws Exception {
-		clientThread.invoke(this::initPreviousXpMap); // Initialize Map of skill XP's, used for calculating XP drops
 		tickCounterUtil = new TickCounterUtil(); // Utility ripped from PVMTickCounter plugin: dictionary of (animation_ID, tick_duration) pairs, plus method to extract ambiguous animations.
 		tickCounterUtil.init();
 	}
@@ -88,24 +83,9 @@ public class LuckTrackerPlugin extends Plugin {
 		assert true;
 	}
 
-	private void initPreviousXpMap()
-	{
-		if (client.getGameState() != GameState.LOGGED_IN)
-		{
-			previousXpMap.clear();
-		}
-		else
-		{
-			for (final Skill skill: Skill.values())
-			{
-				previousXpMap.put(skill, client.getSkillExperience(skill));
-			}
-		}
-	}
-
 	@Subscribe public void onVarbitChanged(VarbitChanged event) { return; }
 
-	private void sendChatMessage(String chatMessage) {
+	public void sendChatMessage(String chatMessage) {
 		final String message = new ChatMessageBuilder()
 				.append(ChatColorType.HIGHLIGHT)
 				.append(chatMessage)
@@ -129,31 +109,9 @@ public class LuckTrackerPlugin extends Plugin {
 		if (hitsplat.isMine()) { // if it's our own hitsplat...
 			int hit = hitsplat.getAmount();
 		}
-		return;
 	}
 
-	private double getXpModifier(int npcIndex) { // Return XP modifier for a given npcIndex.
-		return 1;
-	}
-
-	private int getDamageFromXpDrop(Skill skill, int xp, int npcIndex) { // Calculates Damage dealt based on XP drop to current NPC target.
-
-		int adjustedXp = (int) (xp / getXpModifier(npcIndex)); // Some NPCs grant bonus XP (or reduced XP). Normalize the actual XP drop to an "adjusted" value as if there were no modifier.
-
-		switch(skill) {
-			case ATTACK:
-			case STRENGTH:
-			case DEFENCE:
-				return (int) ((double) adjustedXp / 4.0D);
-			case RANGED:
-				if (client.getVarpValue(VarPlayer.ATTACK_STYLE) == 3) return (int) ((double) xp / 2.0D); // Defensive ranged
-				return (int) ((double) xp / 4.0D);
-			default:
-				return -1;
-		}
-	}
-
-	int getInteractingNpcIndex() { // If the player is interacting with an NPC, returns its NPC Index. If not, return -1.
+	public int getInteractingNpcIndex() { // If the player is interacting with an NPC, returns its NPC Index. If not, return -1.
 		Player player = client.getLocalPlayer();
 		if (player == null) return -1;
 		PlayerComposition playerComposition = player.getPlayerComposition();
@@ -167,9 +125,74 @@ public class LuckTrackerPlugin extends Plugin {
 		return -1;
 	}
 
+	public int getItemStyleBonus(int id, EquipmentStat equipmentStat) { // Takes an item ID and returns that item's bonus for the specified equipment stat.
+		ItemEquipmentStats stats = itemManager.getItemStats(id, false).getEquipment();
+		if (stats == null) return -999;
+		switch(equipmentStat) {
+			case ACRUSH: return stats.getAcrush();
+			case STR: return stats.getStr();
+			case MDMG: return stats.getMdmg();
+			case RSTR: return stats.getRstr();
+			case ASTAB: return stats.getAstab();
+			case DSTAB: return stats.getDstab();
+			case AMAGIC: return stats.getAmagic();
+			case ARANGE: return stats.getArange();
+			case ASLASH: return stats.getAslash();
+			case ASPEED: return stats.getAspeed();
+			case DCRUSH: return stats.getDcrush();
+			case DMAGIC: return stats.getDmagic();
+			case DRANGE: return stats.getDrange();
+			case DSLASH: return stats.getDslash();
+			case PRAYER: return stats.getPrayer();
+		}
+		return -999;
+	}
+
+	public void dummy() {
+		client.getVar(VarPlayer.ATTACK_STYLE);
+		client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
+	}
+
+	public int getEquipmentStyleBonus(EquipmentStat equipmentStat) { // Calculates the total bonus for a given equipment stat (e.g. ACRUSH, PRAYER, DSLASH...)
+		Player player = client.getLocalPlayer();
+		if (player == null) return -999;
+		PlayerComposition playerComposition = player.getPlayerComposition();
+		if (playerComposition == null) return -999;
+
+		int[] equippedItems = playerComposition.getEquipmentIds();
+		int bonus = 0;
+
+		for (int id : equippedItems) {
+			if (id < 512) continue; // Not a valid item
+			id -= 512; // I know this seems weird after the last line... but convert item ID to proper value
+			bonus += getItemStyleBonus(id, equipmentStat);
+		}
+		return bonus;
+	}
+
+	public int calcEffectiveMeleeLevel(int visibleLvl, double prayerBonus, int styleBonus, boolean voidArmor) { // Calculates effective attack or strength level.
+		int effLvl = ((int) (visibleLvl * prayerBonus)) + styleBonus + 8; // Internal cast necessary; int * double promotes to double
+		return voidArmor ? ((int) (effLvl * 1.1D)) : effLvl;
+	}
+
+	public int calcBasicAttackRoll(int effAttLvl, int attBonus, double tgtBonus) { // Calculate attack roll.
+		return (int) (effAttLvl * (attBonus + 64) * tgtBonus);
+	}
+
+	public int calcBasicDefenceRoll(int defLvl, int styleDefBonus) { // Calculates an NPC's defensive roll.
+		return (defLvl + 9) * (styleDefBonus + 64);
+	}
+
+	public int calcBasicMaxHit(int effStrLvl, int strBonus, double tgtBonus) { // Calculates max hit based on effective strength level and strength bonus (from equipment stats).
+		return (int) (tgtBonus * ((effStrLvl * (strBonus + 64) + 320) / 640)); // Internal cast not necessary; int division will automatically return floored int
+	}
+
 	@Subscribe
 	private void onAnimationChanged(AnimationChanged e) { // Main hook for identifying when we perform an attack: our animation changes. Will use PVMTickCounter's utility to determine
+
 		if (!(e.getActor() instanceof Player)) return;
+
+		// TODO hook up salamander blaze and flare; no animation on player, but it spawns G = 952
 
 		Player p = (Player) e.getActor();
 		if (p != client.getLocalPlayer()) return;
@@ -179,36 +202,44 @@ public class LuckTrackerPlugin extends Plugin {
 		PlayerComposition pc = p.getPlayerComposition();
 		if (p.getPlayerComposition() == null) return;
 
+		int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
+		int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
 
-		// Check if we gained any XP since last
+		WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId);
+		AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId);
+		EquipmentStat equipmentStat = attackStyle.getEquipmentStat();
+
+		boolean wearingVoid = false;
+		double prayerBonus = 1.0D;
+		int visibleLvl = 99;
+
+		sendChatMessage(String.format("Weapon stance: %s", weaponStance.getName()));
+
+		int attStanceBonus = weaponStance.getInvisBonus(Skill.ATTACK);
+		int strStanceBonus = weaponStance.getInvisBonus(Skill.STRENGTH);
+		int attBonus = getEquipmentStyleBonus(equipmentStat);
+		int effAttLvl = calcEffectiveMeleeLevel(visibleLvl, prayerBonus, 0, wearingVoid);
+		int attRoll = calcBasicAttackRoll(effAttLvl, attBonus, 1.0D);
+
+		String attackStyleString = attackStyle.getName();
+
+		sendChatMessage(String.format("Invisible ATT bonus = %d / Invisible STR bonus = %d", attStanceBonus, strStanceBonus));
+		sendChatMessage(String.format("effAttLvl = %d / Attack roll = %d", effAttLvl, attRoll));
+
+//		sendChatMessage(String.format("--Attack style name is %s", attackStyleString));
+		// sendChatMessage(String.format("--Offensive slash bonus is %d", getEquipmentStyleBonus(EquipmentStat.ASLASH)));
+		// sendChatMessage(String.format("Defensive magic bonus is %d", getEquipmentStyleBonus(EquipmentStat.DMAGIC)));
+		// sendChatMessage(String.format("ASPEED is %d", getEquipmentStyleBonus(EquipmentStat.ASPEED)));
+		// sendChatMessage(String.format("Prayer bonus is %d", getEquipmentStyleBonus(EquipmentStat.PRAYER)));
+
+
+		// Calculate damage distribution
 
 	}
 
 	@Subscribe
-	private void onFakeXpDrop(FakeXpDrop fakeXpDrop) { // If a FakeXpDrop event happens, process the XP drop
-		getDamageFromXpDrop(fakeXpDrop.getSkill(), fakeXpDrop.getXp(), getInteractingNpcIndex());
-	}
-
-	@Subscribe
-	private void onStatChanged(StatChanged statChanged) // If a StatChanged event happens (e.g. gained XP), process the XP drop
+	private void onStatChanged(StatChanged statChanged) // If a StatChanged event happens (e.g. gained XP)
 	{
-		Skill skill = statChanged.getSkill();
-		final int xpAfter = client.getSkillExperience(skill); // Get new XP
-		final int xpBefore = previousXpMap.getOrDefault(skill, -1); // Get previous XP
-		previousXpMap.put(skill, xpAfter); // Update XP Map with new XP
-
-		final int xpDrop = xpAfter - xpBefore;
-
-		sendChatMessage(String.format("Gained %d xp in %s", xpDrop, skill.getName()));
-
-		switch(skill) {
-			case ATTACK:
-			case STRENGTH:
-			case DEFENCE:
-			case RANGED:
-			case MAGIC:
-				int damage = getDamageFromXpDrop(skill, xpDrop, getInteractingNpcIndex());
-				break;
-		}
+		return;
 	}
 }

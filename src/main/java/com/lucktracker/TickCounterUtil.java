@@ -1,15 +1,19 @@
 package com.lucktracker;
 
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Player;
 
 import java.util.HashMap;
 
+@Slf4j
 public class TickCounterUtil {
     HashMap<Integer, Integer> aniTM;
     private HashMap<Player, Boolean> isBPing = new HashMap<>();
 
-    public void init(){
+    public void init() {
         aniTM = new HashMap<>();
+
+        // TODO Add ancient mace spec... and probably a lot more specs
 
         aniTM.put(7855, -1); // Mixed ticks - surge (5) /harm orb (4)
         aniTM.put(426, -1); // bow shoot TODO Assumes rapid style
@@ -20,6 +24,8 @@ public class TickCounterUtil {
         aniTM.put(401, -1); // dwh bop (6) + Ham Joint (3) + (axe + pickaxe) (5)
         aniTM.put(428, -1); // Chally swipe + Zamorakian Hasta Swipe
         aniTM.put(440, -1); // Chally jab
+        aniTM.put(5247, -1); // Salamander scorch;
+        aniTM.put(1156, -1); // Salamander flare and blaze; NOT player animations
 
         aniTM.put(7617, 2); // rune knife # TODO assumes rapid style
         aniTM.put(8194, 2); // dragon knife # TODO assumes rapid style
@@ -54,6 +60,7 @@ public class TickCounterUtil {
         aniTM.put(8290, 4); // Dhl Crush
         aniTM.put(4503, 4); // Inquisitor's Mace Crush
         aniTM.put(1711, 4); // Zamorakian Spear
+        aniTM.put(7046, 4); // Banner lunge
 
         aniTM.put(395, 5); //Axe
         aniTM.put(708, 5); // Iban's Blast
@@ -73,11 +80,11 @@ public class TickCounterUtil {
         aniTM.put(8010, 5); // Blisterwood Flail
         aniTM.put(7004, 5); // Leaf-Bladed B-Axe chop
         aniTM.put(3852, 5); // Leaf-Bladed B-Axe Smash
-
+        aniTM.put(1428, 5); // Polestaff crush (more of a stab really...)
 
         aniTM.put(1378, 6);
-        aniTM.put(7045, 6);
-        aniTM.put(7054, 6);
+        aniTM.put(7045, 6); // TODO this can also be banner Swipe (4t)
+        aniTM.put(7054, 6); // TODO this can also be banner Pound (4t)
         aniTM.put(2078, 6); // Ahrim's Staff
         aniTM.put(5865, 6); // Barrelchest Anchor
         aniTM.put(5870, 6); // Barrelchest Special
@@ -91,68 +98,74 @@ public class TickCounterUtil {
         aniTM.put(7643, 6); // bgs spec
         aniTM.put(7644, 6); // ags spec
 
-
         aniTM.put(1203, 7); // Chally spec
         aniTM.put(2066, 7); // DH axe
         aniTM.put(2067, 7); // DH Axe Smash
+        aniTM.put(406, 7); // 2H sword crush
+        aniTM.put(407, 7); // 2H sword slash
 
         aniTM.put(9544, 12); // Keris of Curruption Spec
 
     }
 
-    public Integer getTicks(Integer animationID, Integer weaponID, Player p)
-    {
-        if(animationID == 5061 && weaponID == 12926)
+    public Integer getTicks(Integer animationID, Integer weaponID, Player p) {
+        if (animationID == 5061 && weaponID == 12926)
             addToBP(p, Boolean.FALSE);
 
-        if(animationID == -1)
+        if (animationID == -1)
             isBPing.remove(p);
 
         Integer ticks = aniTM.getOrDefault(animationID, 0);
-        if(ticks > 0){
+        if (ticks > 0) {
             return ticks;
-        }else{
-            if(animationID == 7855){
-                if(weaponID == 24423)
+        } else {
+            if (animationID == 7855) {
+                if (weaponID == 24423)
                     return 4;
                 else
                     return 5;
 
-            }if (animationID == 426) {
-                if (weaponID == 25886 || weaponID == 25867 || weaponID == 25869 || weaponID == 25884 || weaponID == 25888 || weaponID == 25890 || weaponID == 25892 || weaponID == 25894 || weaponID == 25896 || weaponID == 25865 || weaponID == 23855 || weaponID == 23856 || weaponID == 23857 || weaponID == 23901 || weaponID == 23902 || weaponID == 23903 )
+            }
+            if (animationID == 426) {
+                if (weaponID == 25886 || weaponID == 25867 || weaponID == 25869 || weaponID == 25884 || weaponID == 25888 || weaponID == 25890 || weaponID == 25892 || weaponID == 25894 || weaponID == 25896 || weaponID == 25865 || weaponID == 23855 || weaponID == 23856 || weaponID == 23857 || weaponID == 23901 || weaponID == 23902 || weaponID == 23903)
                     return 4;
                 else if (weaponID == 20997) {
                     return 5;
                 } else
                     return 3;
 
-            }if (animationID == 390) {
+            }
+            if (animationID == 390) {
                 if (weaponID == 26219) {
                     return 5;
                 } else if (weaponID == 24219) {
                     return 3;
-                }  else
+                } else
                     return 4;
 
-            }if (animationID == 8288) {
+            }
+            if (animationID == 8288) {
                 if (weaponID == 24219) {
                     return 3;
-                }  else
+                } else
                     return 4;
 
-            }if (animationID == 393) {
+            }
+            if (animationID == 393) {
                 if (weaponID == 13652) {
                     return 4;
-                }  else
+                } else
                     return 5;
 
-            }if (animationID == 400) {
+            }
+            if (animationID == 400) {
                 if (weaponID == 24417) {
                     return 4;
-                }  else
+                } else
                     return 5;
 
-            }if (animationID == 401) {
+            }
+            if (animationID == 401) {
                 if (weaponID == 13576) { //dwh
                     return 6;
                 } else if (weaponID == 23360) { // ham joint
@@ -161,13 +174,15 @@ public class TickCounterUtil {
                     return 5;
 
 
-            }if (animationID == 440) {
+            }
+            if (animationID == 440) {
                 if (weaponID == 23895 || weaponID == 23896 || weaponID == 23897 || weaponID == 23849 || weaponID == 23850 || weaponID == 23851 || weaponID == 11889) { //CG Chally
                     return 4;
                 } else
                     return 7;
 
-            }if (animationID == 428) {
+            }
+            if (animationID == 428) {
                 if (weaponID == 23895 || weaponID == 23896 || weaponID == 23897 || weaponID == 23849 || weaponID == 23850 || weaponID == 23851) { //CG Chally
                     return 4;
                 } else
@@ -179,18 +194,19 @@ public class TickCounterUtil {
     }
 
     public Boolean isAttack(Integer animationID) {
+        log.info("Animation ID {} \\ class: {}", animationID, animationID.getClass());
         return aniTM.containsKey(animationID);
     }
 
-    public void addToBP(Player p, Boolean b){
+    public void addToBP(Player p, Boolean b) {
         isBPing.put(p, b);
     }
 
-    public void clearBP(){
+    public void clearBP() {
         isBPing.clear();
     }
 
-    public HashMap<Player, Boolean> getBPing(){
+    public HashMap<Player, Boolean> getBPing() {
         return isBPing;
     }
 }
