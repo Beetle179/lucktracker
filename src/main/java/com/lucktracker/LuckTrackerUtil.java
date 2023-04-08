@@ -98,7 +98,6 @@ public class LuckTrackerUtil {
     }
 
     public static int calcRangeBasicMaxHit(int effRangeStrength, int rStrBonus, double gearBonus, double specialBonus) {
-        System.out.print(String.format("EffRngStr = %d, rStrBonus = %d, gearBonus = %f, specialBonus = %f", effRangeStrength, rStrBonus, gearBonus, specialBonus));
         return (int) (specialBonus * (int) ((double) ((64 + rStrBonus) * (effRangeStrength)) / 640.0D * gearBonus + 0.5));
     } // endregion
 

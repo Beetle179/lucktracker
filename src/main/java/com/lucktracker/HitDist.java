@@ -47,6 +47,17 @@ public class HitDist {
         return 1 - this.pmf.get(0);
     }
 
+    public double cdf(int dmg) {
+        double sum = 0;
+        for (int i = 0; i < dmg + 1; i++) {
+            if (dmg > this.pmf.size()) break;
+            sum += this.pmf.get(i);
+        }
+        System.out.println(this.pmf);
+        System.out.println("CDF at " + dmg + ": " + sum);
+        return sum;
+    }
+
     // TODO reformat for ArrayList and validate
     public void convolve(HitDist hitDist) {
         // https://rarelyknows.wordpress.com/2021/09/12/1d-array-convolution-function-in-java/

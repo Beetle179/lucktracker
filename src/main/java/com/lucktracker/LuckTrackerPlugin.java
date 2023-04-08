@@ -135,7 +135,7 @@ public class LuckTrackerPlugin extends Plugin {
 	protected void resetStats() {
 		this.runningHitDist = new HitDist();
 		this.totalDamage = 0;
-		panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg());
+		panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.cdf(this.totalDamage));
 	}
 
 	@Subscribe
@@ -163,7 +163,7 @@ public class LuckTrackerPlugin extends Plugin {
 		Hitsplat hitsplat = hitsplatApplied.getHitsplat(); // get a handle on the hitsplat
 		if (hitsplat.isMine()) { // if it's our own hitsplat...
 			this.totalDamage += hitsplat.getAmount();
-			panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg());
+			panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.cdf(this.totalDamage));
 		}
 	}
 
