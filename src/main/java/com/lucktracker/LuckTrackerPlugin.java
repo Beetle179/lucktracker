@@ -36,7 +36,6 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.info.InfoPanel;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
@@ -65,6 +64,7 @@ public class LuckTrackerPlugin extends Plugin {
 	private int specialAttackEnergy;
 	private boolean usedSpecialAttack;
 
+	private int totalDamage = 0;
 	private HitDist runningHitDist;
 
 	private boolean isWearingMeleeVoid;
@@ -132,7 +132,11 @@ public class LuckTrackerPlugin extends Plugin {
 		assert true;
 	}
 
-	protected void resetRunningHitDist() { this.runningHitDist = new HitDist(); }
+	protected void resetStats() {
+		this.runningHitDist = new HitDist();
+		this.totalDamage = 0;
+		panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg());
+	}
 
 	@Subscribe
 	public void onGameTick(GameTick gameTick) {
@@ -146,6 +150,21 @@ public class LuckTrackerPlugin extends Plugin {
 
 		// Reset the special attack bool
 		clientThread.invokeLater(() -> {this.usedSpecialAttack = false;});
+	}
+
+	@Subscribe
+	public void onHitsplatApplied(HitsplatApplied hitsplatApplied) {
+		Player player = client.getLocalPlayer();
+		Actor actor = hitsplatApplied.getActor();
+		if (!(actor instanceof NPC)) // only look for hitsplats applied to NPCs
+		{
+			return;
+		}
+		Hitsplat hitsplat = hitsplatApplied.getHitsplat(); // get a handle on the hitsplat
+		if (hitsplat.isMine()) { // if it's our own hitsplat...
+			this.totalDamage += hitsplat.getAmount();
+			panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg());
+		}
 	}
 
 	@Subscribe
@@ -208,8 +227,6 @@ public class LuckTrackerPlugin extends Plugin {
 
 			this.runningHitDist.convolve(hitDist);
 			UTIL.sendChatMessage("RUNNING AVG: " + runningHitDist.getAvgDmg());
-
-
 		});
 	}
 

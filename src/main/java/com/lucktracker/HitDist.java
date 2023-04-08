@@ -28,7 +28,6 @@ public class HitDist {
             else this.pmf.set(maxClamp, this.pmf.get(maxClamp) + incrementalProb);
         }
         this.pmf.set(0, this.pmf.get(0) + (1.0D - hitProb));
-        System.out.println(this.pmf);
     }
 
     public double getAvgDmg() {
