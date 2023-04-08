@@ -4,20 +4,24 @@ import java.util.ArrayList;
 
 public class HitDist {
     private ArrayList<Double> pmf;
+    private ArrayList<Double> cdf;
 
     public HitDist() {
         this.pmf = new ArrayList<>(1);
         this.pmf.add(1.0D);
+        this.cdf = constructCdf(this.pmf);
     }
 
     public HitDist(ArrayList<Double> pmf) { // If something need special logic, e.g. Osmumten's Fang
         this.pmf = pmf;
+        this.cdf = constructCdf(this.pmf);
     }
 
     public HitDist(double hitProb, int maxHit) { // No clamps
         this.pmf = new ArrayList<>();
         for (int dmg = 0; dmg < maxHit + 1; dmg++) { this.pmf.add(hitProb / (maxHit + 1.0D)); }
         this.pmf.set(0, this.pmf.get(0) + (1.0D - hitProb));
+        this.cdf = constructCdf(this.pmf);
     }
 
     public HitDist(double hitProb, int maxHit, int maxClamp) { // Using an upper clamp -- e.g. if max hit is 17, but NPC has 8 hp, then roll all 9+ hits into the probability of hitting 8
@@ -28,6 +32,7 @@ public class HitDist {
             else this.pmf.set(maxClamp, this.pmf.get(maxClamp) + incrementalProb);
         }
         this.pmf.set(0, this.pmf.get(0) + (1.0D - hitProb));
+        this.cdf = constructCdf(this.pmf);
     }
 
     public double getAvgDmg() {
@@ -47,16 +52,28 @@ public class HitDist {
         return 1 - this.pmf.get(0);
     }
 
-    public double cdf(int dmg) {
-        double sum = 0;
-        for (int i = 0; i < dmg + 1; i++) {
-            if (dmg > this.pmf.size()) break;
-            sum += this.pmf.get(i);
+    private static ArrayList<Double> constructCdf(ArrayList<Double> _pmf) {
+        ArrayList<Double> _cdf = new ArrayList<>(_pmf.size());
+        Double sum = 0.0D;
+        for (Double incProb : _pmf) {
+            sum += incProb;
+            _cdf.add(sum);
         }
-        System.out.println(this.pmf);
-        System.out.println("CDF at " + dmg + ": " + sum);
-        return sum;
+        return _cdf;
     }
+
+    public double getCdfAtDmg(int val) {
+        return this.cdf.get(val);
+    }
+
+    public int getDmgAtCdf(double cdf) {
+        if (cdf >= 1.0) { return this.cdf.size() - 1; }
+        for (int i = 0; i < this.cdf.size(); i++) {
+            if (this.cdf.get(i) > cdf) { return i; }
+        }
+        return -1;
+    }
+
 
     // TODO reformat for ArrayList and validate
     public void convolve(HitDist hitDist) {
@@ -93,6 +110,6 @@ public class HitDist {
             retArr.add(temp);
         }
         this.pmf = retArr;
-        System.out.println(retArr);
+        this.cdf = constructCdf(this.pmf);
     }
 }

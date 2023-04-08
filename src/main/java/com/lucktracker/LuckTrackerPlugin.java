@@ -64,7 +64,7 @@ public class LuckTrackerPlugin extends Plugin {
 	private int specialAttackEnergy;
 	private boolean usedSpecialAttack;
 
-	private int totalDamage = 0;
+	private int totalDamage;
 	private HitDist runningHitDist;
 
 	private boolean isWearingMeleeVoid;
@@ -102,6 +102,8 @@ public class LuckTrackerPlugin extends Plugin {
 		monsterTable = new Monsters();
 		UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager);
 
+		this.totalDamage = 0;
+
 		// Load the side panel
 		final BufferedImage navIcon = ImageUtil.loadImageResource(this.getClass(), "/info_icon.png"); // Load the icon for the nav button (in LuckTrackerPlugin's resources subfolder)
 		panel = injector.getInstance(LuckTrackerPanel.class); // Create an instance of the LuckTrackerPanel
@@ -129,13 +131,14 @@ public class LuckTrackerPlugin extends Plugin {
 
 	@Override
 	protected void shutDown() {
-		assert true;
+		clientToolbar.removeNavigation(navButton);
+		panel = null;
 	}
 
 	protected void resetStats() {
 		this.runningHitDist = new HitDist();
 		this.totalDamage = 0;
-		panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.cdf(this.totalDamage));
+		panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.getCdfAtDmg(this.totalDamage), this.runningHitDist.getDmgAtCdf(0.1D), this.runningHitDist.getDmgAtCdf(0.9D));
 	}
 
 	@Subscribe
@@ -163,7 +166,7 @@ public class LuckTrackerPlugin extends Plugin {
 		Hitsplat hitsplat = hitsplatApplied.getHitsplat(); // get a handle on the hitsplat
 		if (hitsplat.isMine()) { // if it's our own hitsplat...
 			this.totalDamage += hitsplat.getAmount();
-			panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.cdf(this.totalDamage));
+			panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.getCdfAtDmg(this.totalDamage), this.runningHitDist.getDmgAtCdf(0.1D), this.runningHitDist.getDmgAtCdf(0.9D));
 		}
 	}
 
@@ -226,7 +229,6 @@ public class LuckTrackerPlugin extends Plugin {
 			UTIL.sendChatMessage("Average: " + hitDist.getAvgDmg() + " || Max: " + hitDist.getMax() + " || >0 Prob: " + hitDist.getNonZeroHitChance());
 
 			this.runningHitDist.convolve(hitDist);
-			UTIL.sendChatMessage("RUNNING AVG: " + runningHitDist.getAvgDmg());
 		});
 	}
 
