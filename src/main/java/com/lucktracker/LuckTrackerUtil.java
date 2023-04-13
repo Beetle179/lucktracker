@@ -9,6 +9,7 @@ import net.runelite.client.game.NPCManager;
 import net.runelite.http.api.item.ItemEquipmentStats;
 
 import java.util.ArrayList;
+import java.util.regex.Pattern;
 
 import static com.lucktracker.EquipmentStat.*;
 
@@ -49,6 +50,11 @@ public class LuckTrackerUtil {
             default: return null;
         }
     } //endregion
+
+    public static Pattern targetNamePattern(final String targetName)
+    {
+        return Pattern.compile("(?:\\s|^)" + targetName + "(?:\\s|$)", Pattern.CASE_INSENSITIVE);
+    }
 
     // region Combat Utility Functions -- Generic
     public static int calcBasicDefenceRoll(int defLvl, int styleDefBonus) { // Calculates an NPC's defensive roll.
