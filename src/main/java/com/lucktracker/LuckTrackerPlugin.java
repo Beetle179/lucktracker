@@ -66,7 +66,7 @@ public class LuckTrackerPlugin extends Plugin {
     private Monsters monsterTable;
     private LuckTrackerUtil UTIL;
 
-    private Item[] wornItems;
+    private List<Item> wornItems;
     private ArrayList<Pattern> slayerTargetNames = new ArrayList<>();
     private int specialAttackEnergy;
     private boolean usedSpecialAttack;
@@ -125,7 +125,7 @@ public class LuckTrackerPlugin extends Plugin {
         clientThread.invokeLater(() -> {
             // Get worn items on startup
             final ItemContainer container = client.getItemContainer(InventoryID.EQUIPMENT);
-            if (container != null) wornItems = container.getItems();
+            if (container != null) wornItems = Arrays.asList(container.getItems());
 
             // Get special attack energy, initialize the spec boolean
             this.usedSpecialAttack = false;
@@ -198,7 +198,7 @@ public class LuckTrackerPlugin extends Plugin {
             return;
         }
 
-        this.wornItems = event.getItemContainer().getItems();
+        this.wornItems = Arrays.asList(event.getItemContainer().getItems());
 
         clientThread.invokeLater(this::updateVoidStatus);
         updateSlayerTargetNames();
@@ -321,17 +321,17 @@ public class LuckTrackerPlugin extends Plugin {
 
         boolean UNIQUE_CASE = false;
         double tgtBonus = 1.0D;
-        double gearBonus = 1.0D;
         double specialBonus = 1.0D;
 
         NPC targetedNpc = (NPC) lastInteracting;
 
         boolean slayerTarget = isSlayerTarget(targetedNpc);
         boolean salveTarget = isSalveTarget(targetedNpc);
+        double gearBonus = LuckTrackerUtil.getGearBonus(this.wornItems, slayerTarget, salveTarget, attackStyle);
 
         if (slayerTarget) UTIL.sendChatMessage("Attacking Slayer Target");
         if (salveTarget) UTIL.sendChatMessage("Attacking SALVE target");
-
+        if (gearBonus != 1.0D) UTIL.sendChatMessage("Gear bonus == " + gearBonus);
 
         int npcCurrentHp = UTIL.getNpcCurrentHp(targetedNpc);
 
