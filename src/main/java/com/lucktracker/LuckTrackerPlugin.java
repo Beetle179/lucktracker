@@ -45,6 +45,7 @@ import javax.inject.Inject;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -309,6 +310,13 @@ public class LuckTrackerPlugin extends Plugin {
         return false;
     }
 
+    private boolean isSalveTarget(NPC npc) {
+        MonsterData monsterData = monsterTable.getMonsterData(npc.getId());
+        List<String> monsterAttributes = Arrays.asList(monsterData.getAttributes());
+        if (monsterAttributes.contains("undead")) return true;
+        return false;
+    }
+
     HitDist processAttack(WeaponStance weaponStance, AttackStyle attackStyle, MonsterData npcData, boolean usedSpecialAttack) {
 
         boolean UNIQUE_CASE = false;
@@ -319,6 +327,11 @@ public class LuckTrackerPlugin extends Plugin {
         NPC targetedNpc = (NPC) lastInteracting;
 
         boolean slayerTarget = isSlayerTarget(targetedNpc);
+        boolean salveTarget = isSalveTarget(targetedNpc);
+
+        if (slayerTarget) UTIL.sendChatMessage("Attacking Slayer Target");
+        if (salveTarget) UTIL.sendChatMessage("Attacking SALVE target");
+
 
         int npcCurrentHp = UTIL.getNpcCurrentHp(targetedNpc);
 
