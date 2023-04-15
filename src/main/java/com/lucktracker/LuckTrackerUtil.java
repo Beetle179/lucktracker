@@ -9,8 +9,7 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
 import net.runelite.http.api.item.ItemEquipmentStats;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -21,6 +20,33 @@ public class LuckTrackerUtil {
     private final ItemManager itemManager;
     private final ChatMessageManager chatMessageManager;
     private final NPCManager npcManager;
+
+    private final static Set<Integer> imbuedSlayerHelms = new HashSet<>(Arrays.asList(
+    ItemID.SLAYER_HELMET_I, ItemID.SLAYER_HELMET_I_25177, ItemID.SLAYER_HELMET_I_26674,
+            ItemID.BLACK_SLAYER_HELMET_I, ItemID.BLACK_SLAYER_HELMET_I_26675, ItemID.BLACK_SLAYER_HELMET_I_25179,
+            ItemID.GREEN_SLAYER_HELMET_I, ItemID.GREEN_SLAYER_HELMET_I_26676, ItemID.GREEN_SLAYER_HELMET_I_25181,
+            ItemID.HYDRA_SLAYER_HELMET_I, ItemID.HYDRA_SLAYER_HELMET_I_26680, ItemID.HYDRA_SLAYER_HELMET_I_25189,
+            ItemID.PURPLE_SLAYER_HELMET_I, ItemID.PURPLE_SLAYER_HELMET_I_26678, ItemID.PURPLE_SLAYER_HELMET_I_25185,
+            ItemID.RED_SLAYER_HELMET_I, ItemID.RED_SLAYER_HELMET_I_26677, ItemID.RED_SLAYER_HELMET_I_25183,
+            ItemID.TURQUOISE_SLAYER_HELMET_I, ItemID.TURQUOISE_SLAYER_HELMET_I_26679, ItemID.TURQUOISE_SLAYER_HELMET_I_25187,
+            ItemID.TWISTED_SLAYER_HELMET_I, ItemID.TWISTED_SLAYER_HELMET_I_26681, ItemID.TWISTED_SLAYER_HELMET_I_25191,
+            ItemID.TZTOK_SLAYER_HELMET_I, ItemID.TZTOK_SLAYER_HELMET_I_26682, ItemID.TZTOK_SLAYER_HELMET_I_25902,
+            ItemID.TZKAL_SLAYER_HELMET_I, ItemID.TZKAL_SLAYER_HELMET_I_26684, ItemID.TZKAL_SLAYER_HELMET_I_25914,
+            ItemID.VAMPYRIC_SLAYER_HELMET_I, ItemID.VAMPYRIC_SLAYER_HELMET_I_26683, ItemID.VAMPYRIC_SLAYER_HELMET_I_25908,
+            ItemID.BLACK_MASK_I, ItemID.BLACK_MASK_10_I, ItemID.BLACK_MASK_9_I, ItemID.BLACK_MASK_8_I,
+            ItemID.BLACK_MASK_7_I, ItemID.BLACK_MASK_6_I, ItemID.BLACK_MASK_5_I, ItemID.BLACK_MASK_4_I,
+            ItemID.BLACK_MASK_3_I, ItemID.BLACK_MASK_2_I, ItemID.BLACK_MASK_1_I,
+            ItemID.BLACK_MASK_I_25276, ItemID.BLACK_MASK_10_I_25266, ItemID.BLACK_MASK_9_I_25267, ItemID.BLACK_MASK_8_I_25268,
+            ItemID.BLACK_MASK_7_I_25269, ItemID.BLACK_MASK_6_I_25270, ItemID.BLACK_MASK_5_I_25271, ItemID.BLACK_MASK_4_I_25272,
+            ItemID.BLACK_MASK_3_I_25273, ItemID.BLACK_MASK_2_I_25274, ItemID.BLACK_MASK_1_I_25275,
+            ItemID.BLACK_MASK_I_26781, ItemID.BLACK_MASK_10_I_26771, ItemID.BLACK_MASK_9_I_26772, ItemID.BLACK_MASK_8_I_26773,
+            ItemID.BLACK_MASK_7_I_26774, ItemID.BLACK_MASK_6_I_26775, ItemID.BLACK_MASK_5_I_26776, ItemID.BLACK_MASK_4_I_26777,
+            ItemID.BLACK_MASK_3_I_26778, ItemID.BLACK_MASK_2_I_26779, ItemID.BLACK_MASK_1_I_26780));
+
+    private final static Set<Integer> slayerHelms = new HashSet<>(Arrays.asList(
+            ItemID.SLAYER_HELMET, ItemID.BLACK_SLAYER_HELMET, ItemID.GREEN_SLAYER_HELMET, ItemID.HYDRA_SLAYER_HELMET, ItemID.PURPLE_SLAYER_HELMET, ItemID.RED_SLAYER_HELMET,  ItemID.TURQUOISE_SLAYER_HELMET,
+            ItemID.TWISTED_SLAYER_HELMET, ItemID.TZTOK_SLAYER_HELMET, ItemID.TZKAL_SLAYER_HELMET, ItemID.VAMPYRIC_SLAYER_HELMET,
+            ItemID.BLACK_MASK, ItemID.BLACK_MASK_1, ItemID.BLACK_MASK_2, ItemID.BLACK_MASK_3, ItemID.BLACK_MASK_4, ItemID.BLACK_MASK_5, ItemID.BLACK_MASK_6, ItemID.BLACK_MASK_7, ItemID.BLACK_MASK_8, ItemID.BLACK_MASK_9, ItemID.BLACK_MASK_10));
 
     public LuckTrackerUtil(Client client, ItemManager itemManager, ChatMessageManager chatMessageManager, NPCManager npcManager) {
         this.client = client;
@@ -148,9 +174,11 @@ public class LuckTrackerUtil {
         return mod;
     }
 
-    public int getEquipmentStyleBonus(List<Item> wornItems, EquipmentStat equipmentStat) { // Calculates the total bonus for a given equipment stat (e.g. ACRUSH, PRAYER, DSLASH...)
+    public int getEquipmentStyleBonus(ItemContainer wornItemsContainer, EquipmentStat equipmentStat) { // Calculates the total bonus for a given equipment stat (e.g. ACRUSH, PRAYER, DSLASH...)
 
         // TODO Blowpipe; need a plugin setting to identify dart type and add it to RSTR
+
+        Item[] wornItems = wornItemsContainer.getItems();
 
         int bonus = 0;
 
@@ -200,9 +228,16 @@ public class LuckTrackerUtil {
         return -999;
     }
 
-    public static double getGearBonus(List<Item> wornItems, boolean slayerTarget, boolean salveTarget, AttackStyle attackStyle) {
+    public static double getGearBonus(ItemContainer wornItemsContainer, boolean slayerTarget, boolean salveTarget, AttackStyle attackStyle) {
 
-        List<Integer> wornItemIds = wornItems.stream().map(Item::getId).collect(Collectors.toList());
+        // TODO Amulet of Avarice. (Or not, who cares. Plus the "Forinthy Surge" skull is a nightmare.)
+        // TODO Arclight
+        // TODO Dragon Hunter Lance
+        // TODO Twisted Bow
+
+        Item[] wornItems = wornItemsContainer.getItems();
+        List<Integer> wornItemIds = Arrays.stream(wornItems).map(Item::getId).collect(Collectors.toList());
+        boolean equippedItemInHeadSlot = wornItemsContainer.getItem(EquipmentInventorySlot.HEAD.getSlotIdx()) != null;
 
         if (salveTarget) {
             // Salve (ei)
@@ -224,27 +259,8 @@ public class LuckTrackerUtil {
         }
 
         // Slayer helm (i) (or black mask (i)). Outer If statement to avoid running the inner conditional if possible. (IDK if Java would stop checking after the first If anyway but I'm not gonna google it rn)
-        if (slayerTarget) {
-            if ((wornItemIds.contains(ItemID.SLAYER_HELMET_I) || wornItemIds.contains(ItemID.SLAYER_HELMET_I_25177) || wornItemIds.contains(ItemID.SLAYER_HELMET_I_26674))
-                    || wornItemIds.contains(ItemID.BLACK_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.BLACK_SLAYER_HELMET_I_26675) || wornItemIds.contains(ItemID.BLACK_SLAYER_HELMET_I_25179)
-                    || wornItemIds.contains(ItemID.GREEN_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.GREEN_SLAYER_HELMET_I_26676) || wornItemIds.contains(ItemID.GREEN_SLAYER_HELMET_I_25181)
-                    || wornItemIds.contains(ItemID.HYDRA_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.HYDRA_SLAYER_HELMET_I_26680) || wornItemIds.contains(ItemID.HYDRA_SLAYER_HELMET_I_25189)
-                    || wornItemIds.contains(ItemID.PURPLE_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.PURPLE_SLAYER_HELMET_I_26678) || wornItemIds.contains(ItemID.PURPLE_SLAYER_HELMET_I_25185)
-                    || wornItemIds.contains(ItemID.RED_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.RED_SLAYER_HELMET_I_26677) || wornItemIds.contains(ItemID.RED_SLAYER_HELMET_I_25183)
-                    || wornItemIds.contains(ItemID.TURQUOISE_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.TURQUOISE_SLAYER_HELMET_I_26679) || wornItemIds.contains(ItemID.TURQUOISE_SLAYER_HELMET_I_25187)
-                    || wornItemIds.contains(ItemID.TWISTED_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.TWISTED_SLAYER_HELMET_I_26681) || wornItemIds.contains(ItemID.TWISTED_SLAYER_HELMET_I_25191)
-                    || wornItemIds.contains(ItemID.TZTOK_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.TZTOK_SLAYER_HELMET_I_26682) || wornItemIds.contains(ItemID.TZTOK_SLAYER_HELMET_I_25902)
-                    || wornItemIds.contains(ItemID.TZKAL_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.TZKAL_SLAYER_HELMET_I_26684) || wornItemIds.contains(ItemID.TZKAL_SLAYER_HELMET_I_25914)
-                    || wornItemIds.contains(ItemID.VAMPYRIC_SLAYER_HELMET_I) || wornItemIds.contains(ItemID.VAMPYRIC_SLAYER_HELMET_I_26683) || wornItemIds.contains(ItemID.VAMPYRIC_SLAYER_HELMET_I_25908)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_I) || wornItemIds.contains(ItemID.BLACK_MASK_10_I) || wornItemIds.contains(ItemID.BLACK_MASK_9_I) || wornItemIds.contains(ItemID.BLACK_MASK_8_I)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_7_I) || wornItemIds.contains(ItemID.BLACK_MASK_6_I) || wornItemIds.contains(ItemID.BLACK_MASK_5_I) || wornItemIds.contains(ItemID.BLACK_MASK_4_I)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_3_I) || wornItemIds.contains(ItemID.BLACK_MASK_2_I) || wornItemIds.contains(ItemID.BLACK_MASK_1_I)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_I_25276) || wornItemIds.contains(ItemID.BLACK_MASK_10_I_25266) || wornItemIds.contains(ItemID.BLACK_MASK_9_I_25267) || wornItemIds.contains(ItemID.BLACK_MASK_8_I_25268)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_7_I_25269) || wornItemIds.contains(ItemID.BLACK_MASK_6_I_25270) || wornItemIds.contains(ItemID.BLACK_MASK_5_I_25271) || wornItemIds.contains(ItemID.BLACK_MASK_4_I_25272)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_3_I_25273) || wornItemIds.contains(ItemID.BLACK_MASK_2_I_25274) || wornItemIds.contains(ItemID.BLACK_MASK_1_I_25275)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_I_26781) || wornItemIds.contains(ItemID.BLACK_MASK_10_I_26771) || wornItemIds.contains(ItemID.BLACK_MASK_9_I_26772) || wornItemIds.contains(ItemID.BLACK_MASK_8_I_26773)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_7_I_26774) || wornItemIds.contains(ItemID.BLACK_MASK_6_I_26775) || wornItemIds.contains(ItemID.BLACK_MASK_5_I_26776) || wornItemIds.contains(ItemID.BLACK_MASK_4_I_26777)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_3_I_26778) || wornItemIds.contains(ItemID.BLACK_MASK_2_I_26779) || wornItemIds.contains(ItemID.BLACK_MASK_1_I_26780)) {
+        if (slayerTarget && equippedItemInHeadSlot) {
+            if (imbuedSlayerHelms.contains(wornItemsContainer.getItem(EquipmentInventorySlot.HEAD.getSlotIdx()).getId())) {
                 switch (attackStyle) {
                     case MAGIC:
                     case RANGE:
@@ -260,31 +276,10 @@ public class LuckTrackerUtil {
             return (7.0D / 6.0D);
 
         // Regular Slayer helm (or black mask)
-        if (slayerTarget) {
+        if (slayerTarget && equippedItemInHeadSlot) {
             if ((attackStyle == AttackStyle.MAGIC) || (attackStyle == AttackStyle.RANGE))
                 return 1.0D; // Don't need to check helmets if we're not using melee
-            if ((wornItemIds.contains(ItemID.SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.BLACK_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.GREEN_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.HYDRA_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.PURPLE_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.RED_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.TURQUOISE_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.TWISTED_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.TZTOK_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.TZKAL_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.VAMPYRIC_SLAYER_HELMET)
-                    || wornItemIds.contains(ItemID.BLACK_MASK)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_1)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_2)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_3)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_4)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_5)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_6)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_7)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_8)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_9)
-                    || wornItemIds.contains(ItemID.BLACK_MASK_10))) {
+            if (slayerHelms.contains(wornItemsContainer.getItem(EquipmentInventorySlot.HEAD.getSlotIdx()).getId())) {
                 return (7.0D / 6.0D);
             }
         }
@@ -294,10 +289,12 @@ public class LuckTrackerUtil {
     }
 
 
-    public boolean isWearingVoid(List<Item> wornItems, Skill skill, boolean elite) { // gross
+    public boolean isWearingVoid(ItemContainer wornItemsContainer, Skill skill, boolean elite) { // gross
         boolean helm = false;
 
-        List<Integer> itemIds = wornItems.stream().map(Item::getId).collect(Collectors.toList());
+        Item[] wornItems = wornItemsContainer.getItems();
+
+        List<Integer> itemIds = Arrays.stream(wornItems).map(Item::getId).collect(Collectors.toList());
         for (Item item : wornItems) itemIds.add(item.getId());
 
         if (itemIds.contains(11665) && (skill == Skill.ATTACK)) helm = true;

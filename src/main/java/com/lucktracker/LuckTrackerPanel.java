@@ -29,7 +29,6 @@ public class LuckTrackerPanel extends PluginPanel {
     JLabel ninetyPercText = new JLabel(String.format("%-" + PAD_LENGTH + "s %10.3f", "90%:", 0.0D));
 
 
-
     @Inject
     LuckTrackerPanel(final LuckTrackerPlugin plugin) {
         JPanel p = new JPanel(new GridBagLayout());

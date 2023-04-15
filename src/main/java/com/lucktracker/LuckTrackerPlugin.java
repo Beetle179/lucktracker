@@ -66,7 +66,7 @@ public class LuckTrackerPlugin extends Plugin {
     private Monsters monsterTable;
     private LuckTrackerUtil UTIL;
 
-    private List<Item> wornItems;
+    private ItemContainer wornItemsContainer;
     private ArrayList<Pattern> slayerTargetNames = new ArrayList<>();
     private int specialAttackEnergy;
     private boolean usedSpecialAttack;
@@ -125,7 +125,7 @@ public class LuckTrackerPlugin extends Plugin {
         clientThread.invokeLater(() -> {
             // Get worn items on startup
             final ItemContainer container = client.getItemContainer(InventoryID.EQUIPMENT);
-            if (container != null) wornItems = Arrays.asList(container.getItems());
+            if (container != null) wornItemsContainer = container;
 
             // Get special attack energy, initialize the spec boolean
             this.usedSpecialAttack = false;
@@ -198,7 +198,7 @@ public class LuckTrackerPlugin extends Plugin {
             return;
         }
 
-        this.wornItems = Arrays.asList(event.getItemContainer().getItems());
+        this.wornItemsContainer = event.getItemContainer();
 
         clientThread.invokeLater(this::updateVoidStatus);
         updateSlayerTargetNames();
@@ -250,13 +250,13 @@ public class LuckTrackerPlugin extends Plugin {
     }
 
     private void updateVoidStatus() { // gross
-        this.isWearingMeleeVoid = UTIL.isWearingVoid(this.wornItems, Skill.ATTACK, false);
-        this.isWearingRangeVoid = UTIL.isWearingVoid(this.wornItems, Skill.RANGED, false);
-        this.isWearingMagicVoid = UTIL.isWearingVoid(this.wornItems, Skill.MAGIC, false);
+        this.isWearingMeleeVoid = UTIL.isWearingVoid(this.wornItemsContainer, Skill.ATTACK, false);
+        this.isWearingRangeVoid = UTIL.isWearingVoid(this.wornItemsContainer, Skill.RANGED, false);
+        this.isWearingMagicVoid = UTIL.isWearingVoid(this.wornItemsContainer, Skill.MAGIC, false);
 
-        this.isWearingMeleeEliteVoid = UTIL.isWearingVoid(this.wornItems, Skill.ATTACK, true);
-        this.isWearingRangeEliteVoid = UTIL.isWearingVoid(this.wornItems, Skill.RANGED, true);
-        this.isWearingMagicEliteVoid = UTIL.isWearingVoid(this.wornItems, Skill.MAGIC, true);
+        this.isWearingMeleeEliteVoid = UTIL.isWearingVoid(this.wornItemsContainer, Skill.ATTACK, true);
+        this.isWearingRangeEliteVoid = UTIL.isWearingVoid(this.wornItemsContainer, Skill.RANGED, true);
+        this.isWearingMagicEliteVoid = UTIL.isWearingVoid(this.wornItemsContainer, Skill.MAGIC, true);
     }
 
     public void updateSlayerTargetNames() {
@@ -327,7 +327,7 @@ public class LuckTrackerPlugin extends Plugin {
 
         boolean slayerTarget = isSlayerTarget(targetedNpc);
         boolean salveTarget = isSalveTarget(targetedNpc);
-        double gearBonus = LuckTrackerUtil.getGearBonus(this.wornItems, slayerTarget, salveTarget, attackStyle);
+        double gearBonus = LuckTrackerUtil.getGearBonus(this.wornItemsContainer, slayerTarget, salveTarget, attackStyle);
 
         if (slayerTarget) UTIL.sendChatMessage("Attacking Slayer Target");
         if (salveTarget) UTIL.sendChatMessage("Attacking SALVE target");
@@ -351,15 +351,15 @@ public class LuckTrackerPlugin extends Plugin {
             } else if (weaponStance == WeaponStance.RANGE_ACCURATE || weaponStance == WeaponStance.RANGE_LONGRANGE || weaponStance == WeaponStance.RAPID) {
                 int effRangeAtt = LuckTrackerUtil.calcEffectiveRangeAttack(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RATT), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
                 int effRangeStr = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
-                int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(wornItems, equipmentStatOffense), gearBonus);
-                int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.RSTR), gearBonus, specialBonus);
+                int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(wornItemsContainer, equipmentStatOffense), gearBonus);
+                int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.RSTR), gearBonus, specialBonus);
 //				UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
                 attack = new Attack(attRoll, maxHit);
             } else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED) {
                 int effStrLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.ATTACK), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_STR), weaponStance.getInvisBonus(Skill.STRENGTH), isWearingMeleeVoid || isWearingMeleeEliteVoid);
                 int effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), isWearingMeleeVoid || isWearingMeleeEliteVoid);
-                int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(wornItems, equipmentStatOffense), tgtBonus);
-                int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItems, EquipmentStat.STR), tgtBonus);
+                int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, equipmentStatOffense), tgtBonus);
+                int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.STR), tgtBonus);
 //				UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
                 attack = new Attack(attRoll, maxHit);
             } else {
