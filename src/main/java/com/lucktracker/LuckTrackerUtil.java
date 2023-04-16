@@ -1,5 +1,7 @@
 package com.lucktracker;
 
+import jdk.internal.org.jline.utils.Log;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
@@ -15,6 +17,7 @@ import java.util.stream.Collectors;
 
 import static com.lucktracker.EquipmentStat.*;
 
+@Slf4j
 public class LuckTrackerUtil {
     private final Client client;
     private final ItemManager itemManager;
@@ -117,8 +120,8 @@ public class LuckTrackerUtil {
         return (int) (effAttLvl * (attBonus + 64) * tgtBonus);
     }
 
-    public static int calcBasicMaxHit(int effStrLvl, int strBonus, double tgtBonus) { // Calculates max hit based on effective strength level and strength bonus (from equipment stats).
-        return (int) (tgtBonus * ((effStrLvl * (strBonus + 64) + 320) / 640)); // Internal cast not necessary; int division will automatically return floored int
+    public static int calcBasicMaxHit(int effStrLvl, int strBonus) { // Calculates max hit based on effective strength level and strength bonus (from equipment stats).
+        return (effStrLvl * (strBonus + 64) + 320) / 640; // Internal cast not necessary; int division will automatically return floored int
     } // endregion
 
     // region Combat Utility Functions -- Range
@@ -141,9 +144,18 @@ public class LuckTrackerUtil {
         return (int) (effRangeAtt * (rangeAttBonus + 64) * gearBonus);
     }
 
-    public static int calcRangeBasicMaxHit(int effRangeStrength, int rStrBonus, double gearBonus, double specialBonus) {
-        return (int) (specialBonus * (int) ((double) ((64 + rStrBonus) * (effRangeStrength)) / 640.0D * gearBonus + 0.5));
-    } // endregion
+    public static int calcRangeBasicMaxHit(int effRangeStrength, int rStrBonus) {
+        return (int) ((double) ((64 + rStrBonus) * (effRangeStrength)) / 640.0D + 0.5);
+    }
+
+    public static int calcEffectiveMagicLevel(int visibleLvl, double prayerBonus, int styleBonus, boolean voidArmor, boolean voidEliteArmor) {
+        double voidBonus;
+        if (voidEliteArmor || voidArmor) voidBonus = 1.45;
+        else voidBonus = 1;
+        return (int) (voidBonus * ((int) (visibleLvl * prayerBonus)) + styleBonus + 9);
+    }
+
+    // endregion
 
     // region NPC Utility Functions
     public int getNpcCurrentHp(NPC npc) { // Logic from OpponentInfo plugin
@@ -228,30 +240,32 @@ public class LuckTrackerUtil {
         return -999;
     }
 
-    public static double getGearBonus(ItemContainer wornItemsContainer, boolean slayerTarget, boolean salveTarget, AttackStyle attackStyle) {
-
-        // TODO Amulet of Avarice. (Or not, who cares. Plus the "Forinthy Surge" skull is a nightmare.)
-        // TODO Arclight
-        // TODO Dragon Hunter Lance
-        // TODO Twisted Bow
-
+    public static double calcSalveSlayerBonus(ItemContainer wornItemsContainer, boolean slayerTarget, boolean salveTarget, AttackStyle attackStyle) {
         Item[] wornItems = wornItemsContainer.getItems();
         List<Integer> wornItemIds = Arrays.stream(wornItems).map(Item::getId).collect(Collectors.toList());
         boolean equippedItemInHeadSlot = wornItemsContainer.getItem(EquipmentInventorySlot.HEAD.getSlotIdx()) != null;
 
         if (salveTarget) {
             // Salve (ei)
-            if (wornItemIds.contains(ItemID.SALVE_AMULETEI) || wornItemIds.contains(ItemID.SALVE_AMULETEI_25278))
+            if (wornItemIds.contains(ItemID.SALVE_AMULETEI) || wornItemIds.contains(ItemID.SALVE_AMULETEI_25278)) {
+                log.info("Applying Salve (ei) bonus");
                 return 1.2D;
+            }
 
             // Salve (e)
             if (wornItemIds.contains(ItemID.SALVE_AMULET_E)) {
-                if ((attackStyle != AttackStyle.MAGIC) && (attackStyle != AttackStyle.RANGE)) return 1.2D;
+                if ((attackStyle != AttackStyle.MAGIC) && (attackStyle != AttackStyle.RANGE)) {
+                    log.info("Applying Salve (e) bonus");
+                    return 1.2D;
+                }
             }
 
             // Salve (i)
             if (wornItemIds.contains(ItemID.SALVE_AMULETI) || wornItemIds.contains(ItemID.SALVE_AMULETI_26763)) {
-                if (attackStyle == AttackStyle.MAGIC) return 1.15D;
+                log.info("Applying Salve (i) bonus");
+                if (attackStyle == AttackStyle.MAGIC) {
+                    return 1.15D;
+                }
                 return (7.0D / 6.0D);
             }
 
@@ -261,25 +275,32 @@ public class LuckTrackerUtil {
         // Slayer helm (i) (or black mask (i)). Outer If statement to avoid running the inner conditional if possible. (IDK if Java would stop checking after the first If anyway but I'm not gonna google it rn)
         if (slayerTarget && equippedItemInHeadSlot) {
             if (imbuedSlayerHelms.contains(wornItemsContainer.getItem(EquipmentInventorySlot.HEAD.getSlotIdx()).getId())) {
+                log.info("Applying Imbued Slayer Helm/Black Mask bonus");
                 switch (attackStyle) {
                     case MAGIC:
-                    case RANGE:
+                    case RANGE: {
                         return 1.15D;
-                    default:
+                    }
+                    default: {
                         return (7.0D / 6.0D);
+                    }
                 }
             }
         }
 
         // Regular Salve
-        if (salveTarget && wornItemIds.contains(ItemID.SALVE_AMULET) && ((attackStyle != AttackStyle.MAGIC) && (attackStyle != AttackStyle.RANGE)))
+        if (salveTarget && wornItemIds.contains(ItemID.SALVE_AMULET) && ((attackStyle != AttackStyle.MAGIC) && (attackStyle != AttackStyle.RANGE))) {
+            log.info("Applying Salve bonus");
             return (7.0D / 6.0D);
+        }
 
         // Regular Slayer helm (or black mask)
         if (slayerTarget && equippedItemInHeadSlot) {
-            if ((attackStyle == AttackStyle.MAGIC) || (attackStyle == AttackStyle.RANGE))
+            if ((attackStyle == AttackStyle.MAGIC) || (attackStyle == AttackStyle.RANGE)) {
                 return 1.0D; // Don't need to check helmets if we're not using melee
+            }
             if (slayerHelms.contains(wornItemsContainer.getItem(EquipmentInventorySlot.HEAD.getSlotIdx()).getId())) {
+                log.info("Applying Slayer Helm bonus");
                 return (7.0D / 6.0D);
             }
         }

@@ -26,6 +26,9 @@
 package com.lucktracker;
 
 import com.google.inject.Provides;
+import com.sun.source.doctree.HiddenTree;
+import jdk.internal.org.jline.utils.Log;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
 import net.runelite.client.callback.ClientThread;
@@ -43,11 +46,10 @@ import org.apache.commons.lang3.ArrayUtils;
 
 import javax.inject.Inject;
 import java.awt.image.BufferedImage;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @PluginDescriptor(
         name = "Luck Tracker",
@@ -56,7 +58,16 @@ import java.util.regex.Pattern;
         enabledByDefault = false
 )
 
+@Slf4j
 public class LuckTrackerPlugin extends Plugin {
+
+    /*
+    Identify when a player attacks by detecting whenever an attack animation is performed.
+    Get information about the player (offensive stats, gear, etc.), and information about the target (defense level, defense stats).
+    Calculate the player's attack roll and the opponent's defense roll. Generate a Hit Distribution based on this.
+        Account for as many special cases as possible (set bonuses, special attacks, unique weapons, weapon/npc interactions, etc.).
+    Keep a "running-total" hit distribution -- that is, a total damage PDF -- and show where the player's total damage lands on it.
+     */
 
     private LuckTrackerPanel panel;
     private NavigationButton navButton;
@@ -81,6 +92,12 @@ public class LuckTrackerPlugin extends Plugin {
     private boolean isWearingRangeEliteVoid;
     private boolean isWearingMagicEliteVoid;
 
+    public final Set<Integer> crystalBodies = new HashSet<>(Arrays.asList(ItemID.CRYSTAL_BODY, ItemID.CRYSTAL_BODY_27721, ItemID.CRYSTAL_BODY_27709, ItemID.CRYSTAL_BODY_27733, ItemID.CRYSTAL_BODY_27757, ItemID.CRYSTAL_BODY_27697, ItemID.CRYSTAL_BODY_27745, ItemID.CRYSTAL_BODY_27769));
+    public final Set<Integer> crystalLegs = new HashSet<>(Arrays.asList(ItemID.CRYSTAL_LEGS, ItemID.CRYSTAL_LEGS_27725, ItemID.CRYSTAL_LEGS_27713, ItemID.CRYSTAL_LEGS_27701, ItemID.CRYSTAL_LEGS_27761, ItemID.CRYSTAL_LEGS_27737, ItemID.CRYSTAL_LEGS_27749, ItemID.CRYSTAL_LEGS_27773));
+    public final Set<Integer> crystalHelms = new HashSet<>(Arrays.asList(ItemID.CRYSTAL_HELM, ItemID.CRYSTAL_HELM_27729, ItemID.CRYSTAL_HELM_27705, ItemID.CRYSTAL_HELM_27717, ItemID.CRYSTAL_HELM_27729, ItemID.CRYSTAL_HELM_27741, ItemID.CRYSTAL_HELM_27753, ItemID.CRYSTAL_HELM_27777));
+    public final Set<Integer> bofas = new HashSet<>(Arrays.asList(ItemID.BOW_OF_FAERDHINEN_INACTIVE, ItemID.BOW_OF_FAERDHINEN, ItemID.BOW_OF_FAERDHINEN_C, ItemID.BOW_OF_FAERDHINEN_C_25869, ItemID.BOW_OF_FAERDHINEN_C_25884, ItemID.BOW_OF_FAERDHINEN_C_25886, ItemID.BOW_OF_FAERDHINEN_C_25888, ItemID.BOW_OF_FAERDHINEN_C_25890, ItemID.BOW_OF_FAERDHINEN_C_25892, ItemID.BOW_OF_FAERDHINEN_C_25894, ItemID.BOW_OF_FAERDHINEN_C_25896));
+    public final Set<Integer> crystalBows = new HashSet<>(Arrays.asList(ItemID.NEW_CRYSTAL_BOW, ItemID.NEW_CRYSTAL_BOW_4213, ItemID.CRYSTAL_BOW_FULL, ItemID.CRYSTAL_BOW_910, ItemID.CRYSTAL_BOW_810, ItemID.CRYSTAL_BOW_710, ItemID.CRYSTAL_BOW_610, ItemID.CRYSTAL_BOW_510, ItemID.CRYSTAL_BOW_410, ItemID.CRYSTAL_BOW_310, ItemID.CRYSTAL_BOW_210, ItemID.CRYSTAL_BOW_110, ItemID.NEW_CRYSTAL_BOW_16888, ItemID.CRYSTAL_BOW));
+    public final Set<Integer> imbuedCrystalBows = new HashSet<>(Arrays.asList(ItemID.NEW_CRYSTAL_BOW_I, ItemID.CRYSTAL_BOW_FULL_I, ItemID.CRYSTAL_BOW_910_I, ItemID.CRYSTAL_BOW_810_I, ItemID.CRYSTAL_BOW_710_I, ItemID.CRYSTAL_BOW_610_I, ItemID.CRYSTAL_BOW_510_I, ItemID.CRYSTAL_BOW_410_I, ItemID.CRYSTAL_BOW_310_I, ItemID.CRYSTAL_BOW_210_I, ItemID.CRYSTAL_BOW_110_I, ItemID.NEW_CRYSTAL_BOW_I_16889));
 
     @Inject
     private Client client;
@@ -123,9 +140,8 @@ public class LuckTrackerPlugin extends Plugin {
         clientToolbar.addNavigation(navButton); // Add the nav button to the toolbar
 
         clientThread.invokeLater(() -> {
-            // Get worn items on startup
-            final ItemContainer container = client.getItemContainer(InventoryID.EQUIPMENT);
-            if (container != null) wornItemsContainer = container;
+            // Get worn items on startup // TODO Logging in with nothing equipped will set this to null. (Unequipping items while already logged in properly sets an empty ItemContainer, but not logging in w/ nothinng equipped!)
+            final ItemContainer wornItemsContainer = client.getItemContainer(InventoryID.EQUIPMENT);
 
             // Get special attack energy, initialize the spec boolean
             this.usedSpecialAttack = false;
@@ -184,10 +200,10 @@ public class LuckTrackerPlugin extends Plugin {
 
     @Subscribe
     public void onVarbitChanged(VarbitChanged varbitChanged) {
-        if (varbitChanged.getVarpId() == VarPlayer.SPECIAL_ATTACK_PERCENT) this.specialAttackEnergy = varbitChanged.getValue();
+        if (varbitChanged.getVarpId() == VarPlayer.SPECIAL_ATTACK_PERCENT)
+            this.specialAttackEnergy = varbitChanged.getValue();
         if (varbitChanged.getValue() < this.specialAttackEnergy) this.usedSpecialAttack = true;
-        if (varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_CREATURE || varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_LOCATION)
-        {
+        if (varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_CREATURE || varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_LOCATION) {
             updateSlayerTargetNames();
         }
     }
@@ -242,7 +258,7 @@ public class LuckTrackerPlugin extends Plugin {
                 return;
             }
 
-            HitDist hitDist = processAttack(weaponStance, attackStyle, npcData, this.usedSpecialAttack);
+            HitDist hitDist = processAttack(attackStyle, weaponStance, npcData);
             UTIL.sendChatMessage("Average: " + hitDist.getAvgDmg() + " || Max: " + hitDist.getMax() + " || >0 Prob: " + hitDist.getNonZeroHitChance());
 
             this.runningHitDist.convolve(hitDist);
@@ -317,58 +333,186 @@ public class LuckTrackerPlugin extends Plugin {
         return false;
     }
 
-    HitDist processAttack(WeaponStance weaponStance, AttackStyle attackStyle, MonsterData npcData, boolean usedSpecialAttack) {
-
-        boolean UNIQUE_CASE = false;
-        double tgtBonus = 1.0D;
-        double specialBonus = 1.0D;
+    // TODO decide if this should be a pure function or not.
+    //  Right now there's a nasty mix of argument passing + instance variables. Pick one and stick with it!
+    HitDist processAttack(AttackStyle attackStyle, WeaponStance weaponStance, MonsterData npcData) {
+        int effAttLvl, effStrLvl, attRoll, maxHit = -1, defRoll, npcCurrentHp;
+        double hitChance;
 
         NPC targetedNpc = (NPC) lastInteracting;
+        List<Integer> wornItemIds = Arrays.stream(wornItemsContainer.getItems()).map(Item::getId).collect(Collectors.toList());
+        EquipmentStat equipmentStatOffense = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
+        EquipmentStat equipmentStatDefense = LuckTrackerUtil.getDefensiveStat(equipmentStatOffense); // Using the attackStyle, figure out which worn-equipment stat we should use
 
         boolean slayerTarget = isSlayerTarget(targetedNpc);
         boolean salveTarget = isSalveTarget(targetedNpc);
-        double gearBonus = LuckTrackerUtil.getGearBonus(this.wornItemsContainer, slayerTarget, salveTarget, attackStyle);
 
-        if (slayerTarget) UTIL.sendChatMessage("Attacking Slayer Target");
-        if (salveTarget) UTIL.sendChatMessage("Attacking SALVE target");
-        if (gearBonus != 1.0D) UTIL.sendChatMessage("Gear bonus == " + gearBonus);
+        // region Base Attack Roll and Max Hit
 
-        int npcCurrentHp = UTIL.getNpcCurrentHp(targetedNpc);
+        switch (attackStyle) {
+            case MAGIC: {
+                int visibleMagicLvl = client.getBoostedSkillLevel(Skill.MAGIC);
+                effAttLvl = LuckTrackerUtil.calcEffectiveMagicLevel(visibleMagicLvl, UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_MATT), weaponStance.getInvisBonus(Skill.MAGIC), isWearingMagicVoid, isWearingMagicEliteVoid); // TODO Handle Tumeken's Shadow in here (Attack Roll)
+                if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE) {
+                    if (wornItemIds.contains(ItemID.TUMEKENS_SHADOW)) {
+                         maxHit = visibleMagicLvl / 3 + 1;
+                    }
+                    else if (wornItemIds.contains(ItemID.SANGUINESTI_STAFF) || wornItemIds.contains(ItemID.HOLY_SANGUINESTI_STAFF)) {
+                        maxHit = visibleMagicLvl / 3 - 1;
+                    }
+                    else if (wornItemIds.contains(ItemID.TRIDENT_OF_THE_SWAMP) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SWAMP_E)) {
+                        maxHit = visibleMagicLvl / 3 - 2;
+                    }
+                    else if (wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS_E) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS_FULL)) {
+                        maxHit = visibleMagicLvl / 3 - 5;
+                    }
+                } else {
+                    maxHit = -1; // TODO regular spells
+                }
+                maxHit = (int) (maxHit * (1.0D + UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.MDMG) / 100.0D));
+                break;
+            }
+            case RANGE: {
+                effAttLvl = LuckTrackerUtil.calcEffectiveRangeAttack(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RATT), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
+                effStrLvl = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
+                maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, equipmentStatOffense));
+                break;
+            }
+            default: {
+                effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.ATTACK), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), isWearingMeleeVoid || isWearingMeleeEliteVoid);
+                effStrLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_STR), weaponStance.getInvisBonus(Skill.STRENGTH), isWearingMeleeVoid || isWearingMeleeEliteVoid);
+                maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.STR));
+                break;
+            }
+        }
+        attRoll = (effAttLvl * (UTIL.getEquipmentStyleBonus(wornItemsContainer, equipmentStatOffense) + 64));
 
-        if (!UNIQUE_CASE) {
-            Attack attack;
-            EquipmentStat equipmentStatOffense = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
-            EquipmentStat equipmentStatDefense = LuckTrackerUtil.getDefensiveStat(equipmentStatOffense); // Get the defensive stat to generate NPC's defense roll
+        log.info(String.format("Base attack roll / max hit: %d / %d", attRoll, maxHit));
 
-            int defRoll = npcData.calcDefenseRoll(equipmentStatDefense);
+        // endregion
 
-            if (weaponStance == WeaponStance.CASTING || weaponStance == WeaponStance.DEFENSIVE_CASTING) {
-                UTIL.sendChatMessage("Spell cast");
-                attack = new Attack(1000, 10);
-            } else if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE) {
-                UTIL.sendChatMessage("Powered staff");
-                attack = new Attack(1000, 10);
-            } else if (weaponStance == WeaponStance.RANGE_ACCURATE || weaponStance == WeaponStance.RANGE_LONGRANGE || weaponStance == WeaponStance.RAPID) {
-                int effRangeAtt = LuckTrackerUtil.calcEffectiveRangeAttack(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RATT), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
-                int effRangeStr = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
-                int attRoll = LuckTrackerUtil.calcBasicRangeAttackRoll(effRangeAtt, UTIL.getEquipmentStyleBonus(wornItemsContainer, equipmentStatOffense), gearBonus);
-                int maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effRangeStr, UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.RSTR), gearBonus, specialBonus);
-//				UTIL.sendChatMessage(String.format("RANGE HIT -- effRangeAtt = %d / effRangeStr = %d / Attack roll = %d / Max Hit = %d", effRangeAtt, effRangeStr, attRoll, maxHit));
-                attack = new Attack(attRoll, maxHit);
-            } else if (weaponStance == WeaponStance.ACCURATE || weaponStance == WeaponStance.AGGRESSIVE || weaponStance == WeaponStance.DEFENSIVE || weaponStance == WeaponStance.CONTROLLED) {
-                int effStrLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.ATTACK), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_STR), weaponStance.getInvisBonus(Skill.STRENGTH), isWearingMeleeVoid || isWearingMeleeEliteVoid);
-                int effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), isWearingMeleeVoid || isWearingMeleeEliteVoid);
-                int attRoll = LuckTrackerUtil.calcBasicMeleeAttackRoll(effAttLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, equipmentStatOffense), tgtBonus);
-                int maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.STR), tgtBonus);
-//				UTIL.sendChatMessage(String.format("effAttLvl = %d / effStrLvl = %d / Attack roll = %d / Max Hit = %d", effAttLvl, effStrLvl, attRoll, maxHit));
-                attack = new Attack(attRoll, maxHit);
-            } else {
-                UTIL.sendChatMessage("FAILED TO IDENTIFY ATTACK TYPE");
-                attack = new Attack(1000, 10);
+        // region NPC HP and basic Defense Roll
+
+        npcCurrentHp = UTIL.getNpcCurrentHp(targetedNpc);
+        defRoll = npcData.calcDefenseRoll(equipmentStatDefense);
+
+        // endregion
+
+        // region Attack roll & Max hit modifiers
+
+        // TODO Tumeken's Shadow
+
+        // TODO Mystic Smoke Staff gets +10% acc and dmg on regular spellbook. Right here
+
+        // Crystal armor, if wearing a crystal bow or bofa
+        if (attackStyle == AttackStyle.RANGE && (wornItemIds.stream().anyMatch(bofas::contains) || wornItemIds.stream().anyMatch(crystalBows::contains) || wornItemIds.stream().anyMatch(imbuedCrystalBows::contains))) {
+            double totalAttBoost = 1.0D;
+            double totalStrBoost = 1.0D;
+            if (wornItemIds.stream().anyMatch(crystalBodies::contains)) {
+                totalAttBoost += 0.15D;
+                totalStrBoost += 0.075D;
+            }
+            if (wornItemIds.stream().anyMatch(crystalLegs::contains)) {
+                totalAttBoost *= 0.1D;
+                totalStrBoost += 0.05D;
+            }
+            if (wornItemIds.stream().anyMatch(crystalHelms::contains)) {
+                totalAttBoost *= 0.05D;
+                totalStrBoost += 0.025D;
+            }
+            attRoll = (int) (attRoll * totalAttBoost);
+            maxHit = (int) (maxHit * totalStrBoost);
+            log.info("Wearing Crystal Armor + cbow/bofa -- total bonus is " + totalAttBoost);
+        }
+
+        // Slayer Helm and Salve bonus
+        double salveSlayerBonus = LuckTrackerUtil.calcSalveSlayerBonus(wornItemsContainer, slayerTarget, salveTarget, attackStyle);
+        attRoll = (int) (attRoll * salveSlayerBonus);
+        maxHit = (int) (maxHit * salveSlayerBonus);
+
+        // TODO Darklight, Silverlight
+        // Arclight
+        if (wornItemIds.contains(ItemID.ARCLIGHT) && (attackStyle != AttackStyle.MAGIC) && Arrays.stream(monsterTable.getMonsterData(targetedNpc.getId()).getAttributes()).anyMatch("demon"::contains)) {
+            attRoll = (int) (attRoll * 1.7D);
+            maxHit = (int) (maxHit * 1.7D);
+            log.info("Wielding Arclight and attacking a demon");
+        }
+
+        // Dragon Hunter Crossbow
+        if ((attackStyle != AttackStyle.MAGIC) &&
+                Arrays.stream(monsterTable.getMonsterData(targetedNpc.getId()).getAttributes()).anyMatch("dragon"::contains) &&
+                (wornItemIds.contains(ItemID.DRAGON_HUNTER_CROSSBOW) || wornItemIds.contains(ItemID.DRAGON_HUNTER_CROSSBOW_T) || wornItemIds.contains(ItemID.DRAGON_HUNTER_CROSSBOW_B))) {
+            attRoll = (int) (attRoll * 1.3);
+            maxHit = (int) (maxHit * 1.25);
+            log.info("Wielding DHCB and attacking a dragon");
+        }
+
+        // Dragon Hunter Lance
+        if ((attackStyle != AttackStyle.MAGIC) &&
+                Arrays.stream(monsterTable.getMonsterData(targetedNpc.getId()).getAttributes()).anyMatch("dragon"::contains) &&
+                (wornItemIds.contains(ItemID.DRAGON_HUNTER_LANCE))) {
+            attRoll = (int) (attRoll * 1.2);
+            maxHit = (int) (maxHit * 1.2);
+            log.info("Wielding DHL and attacking a dragon");
+        }
+
+        // TODO Wildy Weapons
+
+        // Twisted Bow
+        if ((attackStyle != AttackStyle.MAGIC) &&
+                wornItemIds.contains(ItemID.TWISTED_BOW)) {
+            int oppMagicLevel = monsterTable.getMonsterData(targetedNpc.getId()).getMagicLvl();
+            int oppMagicAcc = monsterTable.getMonsterData(targetedNpc.getId()).getAMagic();
+            int oppMagicValue = Math.max(oppMagicAcc, oppMagicLevel);
+
+            // TODO cap oppMagicValue at 350 in cox, 250 outside of cox
+
+            double accuracyBonus = (140.0D + ((((3.0D * oppMagicValue) - 10.0D) / 100.0D) - (Math.pow(((3.0D * oppMagicValue / 10.0D) - 100.0D), 2.0D) / 100.0D))) / 100.0D;
+            double damageBonus = (250.0D + ((((3.0D * oppMagicValue) - 14.0D) / 100.0D) - (Math.pow(((3.0D * oppMagicValue / 10.0D) - 140.0D), 2.0D) / 100.0D))) / 100.0D;
+
+            attRoll = (int) (attRoll * accuracyBonus);
+            maxHit = (int) (maxHit * damageBonus);
+            log.info(String.format("Wielding Twisted Bow -- accuracy bonus = %f, damage bonus = %f", accuracyBonus, damageBonus));
+        }
+
+        // Obsidian Armor set bonus (NOT Bers. necklace)
+        if (wornItemIds.contains(ItemID.OBSIDIAN_HELMET) && wornItemIds.contains(ItemID.OBSIDIAN_PLATEBODY) && wornItemIds.contains(ItemID.OBSIDIAN_PLATELEGS)) {
+            if (wornItemIds.contains(ItemID.TOKTZXILEK) || wornItemIds.contains(ItemID.TOKTZXILAK) || wornItemIds.contains(ItemID.TZHAARKETEM) || wornItemIds.contains(ItemID.TZHAARKETOM)
+                    || wornItemIds.contains(ItemID.TOKTZXILAK_20554) || wornItemIds.contains(ItemID.TZHAARKETOM_T)) {
+                attRoll = (int) (attRoll * 1.1D);
+                maxHit = (int) (maxHit * 1.1D);
+                log.info(String.format("Obsidian Armor set bonus granted"));
+            }
+        }
+
+        // TODO Chinchompa range to target
+
+        // Inquisitor Armor
+        if (attackStyle == AttackStyle.CRUSH) {
+            double totalBonus = 1.0D;
+            for (int itemId : new int[]{ItemID.INQUISITORS_HAUBERK, ItemID.INQUISITORS_HAUBERK_27196, ItemID.INQUISITORS_GREAT_HELM, ItemID.INQUISITORS_GREAT_HELM_27195, ItemID.INQUISITORS_PLATESKIRT, ItemID.INQUISITORS_PLATESKIRT_27197}) {
+                if (wornItemIds.contains(itemId)) totalBonus += 0.005D;
             }
 
-            return new HitDist(LuckTrackerUtil.getHitChance(attack.getAttRoll(), defRoll), attack.getMaxHit(), npcCurrentHp);
+            if (totalBonus > 1.014D) { // all 3 pieces gives 1.015 before set effect; use >1.014 due to double precision
+                totalBonus = 1.025D;
+            }
+            attRoll = (int) (attRoll * totalBonus);
+            maxHit = (int) (maxHit * totalBonus);
+
+            if (totalBonus > 1.0D) log.info("Wearing Inquisitor armor -- total bonus = " + totalBonus);
         }
-        return new HitDist(0.1f, 10);
+
+        // TODO Tome of Water
+
+        // TODO Keris weaponry
+
+        // TODO Brimstone ring
+
+        // endregion
+
+        hitChance = LuckTrackerUtil.getHitChance(attRoll, defRoll);
+
+        return new HitDist(hitChance, maxHit, npcCurrentHp);
     }
 }
