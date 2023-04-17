@@ -1,8 +1,5 @@
 package com.lucktracker;
 
-import java.util.List;
-
-
 // enum singleton: call MonsterData.getData(npcId) to return a MonsterData object; call object.getRStr() to get rStr
 
 public class MonsterData {

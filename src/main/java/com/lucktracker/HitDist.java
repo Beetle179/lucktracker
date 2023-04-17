@@ -74,8 +74,6 @@ public class HitDist {
         return -1;
     }
 
-
-    // TODO reformat for ArrayList and validate
     public void convolve(HitDist hitDist) {
         // https://rarelyknows.wordpress.com/2021/09/12/1d-array-convolution-function-in-java/
         ArrayList<Double> b = hitDist.pmf;

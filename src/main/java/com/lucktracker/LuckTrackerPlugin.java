@@ -305,38 +305,32 @@ public class LuckTrackerPlugin extends Plugin {
             return false;
         }
 
-        for (NPC nearbyNpc : client.getNpcs()) {
-            NPCComposition composition = nearbyNpc.getTransformedComposition();
-            String name;
-            Matcher targetMatcher;
-            if (composition == null) {
-                continue;
-            }
-            name = composition.getName().replace('\u00A0', ' ').toLowerCase();
+        String name;
+        Matcher targetMatcher;
+        NPCComposition composition = npc.getTransformedComposition();
 
-            for (Pattern target : this.slayerTargetNames) {
-                targetMatcher = target.matcher(name);
-                if (targetMatcher.find()
-                        && (ArrayUtils.contains(composition.getActions(), "Attack")
-                        || ArrayUtils.contains(composition.getActions(), "Pick"))) {
-                    return true;
-                }
+        name = composition.getName().replace('\u00A0', ' ').toLowerCase();
+
+        for (Pattern target : this.slayerTargetNames) {
+            targetMatcher = target.matcher(name);
+            if (targetMatcher.find()
+                    && (ArrayUtils.contains(composition.getActions(), "Attack")
+                    || ArrayUtils.contains(composition.getActions(), "Pick"))) {
+                return true;
             }
         }
-        return false;
+        return false; // NPC did not match slayer target names
     }
 
     private boolean isSalveTarget(NPC npc) {
         MonsterData monsterData = monsterTable.getMonsterData(npc.getId());
         List<String> monsterAttributes = Arrays.asList(monsterData.getAttributes());
-        if (monsterAttributes.contains("undead")) return true;
-        return false;
+        return monsterAttributes.contains("undead");
     }
 
-    // TODO decide if this should be a pure function or not.
-    //  Right now there's a nasty mix of argument passing + instance variables. Pick one and stick with it!
+    // Decide if this should be a pure function or not... really awkward mix of argument passing and class objects
     HitDist processAttack(AttackStyle attackStyle, WeaponStance weaponStance, MonsterData npcData) {
-        int effAttLvl, effStrLvl, attRoll, maxHit = -1, defRoll, npcCurrentHp;
+        int effAttLvl, effStrLvl, attRoll, maxHit, defRoll, npcCurrentHp;
         double hitChance;
 
         NPC targetedNpc = (NPC) lastInteracting;
@@ -346,6 +340,8 @@ public class LuckTrackerPlugin extends Plugin {
 
         boolean slayerTarget = isSlayerTarget(targetedNpc);
         boolean salveTarget = isSalveTarget(targetedNpc);
+        boolean playerInToa = false; // TODO Check if player in TOA for Shadow bonus
+        boolean playerInCox = false; // TODO Check if player in COX for TBow bonus
 
         // region Base Attack Roll and Max Hit
 
@@ -355,16 +351,17 @@ public class LuckTrackerPlugin extends Plugin {
                 effAttLvl = LuckTrackerUtil.calcEffectiveMagicLevel(visibleMagicLvl, UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_MATT), weaponStance.getInvisBonus(Skill.MAGIC), isWearingMagicVoid, isWearingMagicEliteVoid); // TODO Handle Tumeken's Shadow in here (Attack Roll)
                 if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE) {
                     if (wornItemIds.contains(ItemID.TUMEKENS_SHADOW)) {
-                         maxHit = visibleMagicLvl / 3 + 1;
-                    }
-                    else if (wornItemIds.contains(ItemID.SANGUINESTI_STAFF) || wornItemIds.contains(ItemID.HOLY_SANGUINESTI_STAFF)) {
+                        maxHit = visibleMagicLvl / 3 + 1;
+                        int magicMultiplier = playerInToa ? 4 : 3;
+                        maxHit = (int) (maxHit * (1.0D + magicMultiplier * UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.MDMG) / 100.0D));
+                    } else if (wornItemIds.contains(ItemID.SANGUINESTI_STAFF) || wornItemIds.contains(ItemID.HOLY_SANGUINESTI_STAFF)) {
                         maxHit = visibleMagicLvl / 3 - 1;
-                    }
-                    else if (wornItemIds.contains(ItemID.TRIDENT_OF_THE_SWAMP) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SWAMP_E)) {
+                    } else if (wornItemIds.contains(ItemID.TRIDENT_OF_THE_SWAMP) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SWAMP_E)) {
                         maxHit = visibleMagicLvl / 3 - 2;
-                    }
-                    else if (wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS_E) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS_FULL)) {
+                    } else if (wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS_E) || wornItemIds.contains(ItemID.TRIDENT_OF_THE_SEAS_FULL)) {
                         maxHit = visibleMagicLvl / 3 - 5;
+                    } else { // TODO Gauntlet Staves, Dawnbringer, Wildy Sceptres, Black Salamander
+                        maxHit = -1;
                     }
                 } else {
                     maxHit = -1; // TODO regular spells
@@ -400,9 +397,10 @@ public class LuckTrackerPlugin extends Plugin {
 
         // region Attack roll & Max hit modifiers
 
-        // TODO Tumeken's Shadow
+        // TODO: chaos gauntlets, Slayer Staff (e), Magic Dart, binding spells, Smoke Staff, full Ahrim's + Amulet of Damned,
+        //      Gadderhammer, Keris of Corruption, Leaf-Bladed Battleaxe, Verac's, Bolt Procs, Dharok's, COX Guardians,
 
-        // TODO Mystic Smoke Staff gets +10% acc and dmg on regular spellbook. Right here
+        // TODO Multi-target attacks: Chins, Barrages, Bulwark spec, Chally/Scythe on small tgts, Venator Bow
 
         // Crystal armor, if wearing a crystal bow or bofa
         if (attackStyle == AttackStyle.RANGE && (wornItemIds.stream().anyMatch(bofas::contains) || wornItemIds.stream().anyMatch(crystalBows::contains) || wornItemIds.stream().anyMatch(imbuedCrystalBows::contains))) {
@@ -463,9 +461,8 @@ public class LuckTrackerPlugin extends Plugin {
                 wornItemIds.contains(ItemID.TWISTED_BOW)) {
             int oppMagicLevel = monsterTable.getMonsterData(targetedNpc.getId()).getMagicLvl();
             int oppMagicAcc = monsterTable.getMonsterData(targetedNpc.getId()).getAMagic();
-            int oppMagicValue = Math.max(oppMagicAcc, oppMagicLevel);
-
-            // TODO cap oppMagicValue at 350 in cox, 250 outside of cox
+            int oppMagicValueCap = playerInCox ? 350 : 250;
+            int oppMagicValue = Math.max(oppMagicValueCap, Math.max(oppMagicAcc, oppMagicLevel));
 
             double accuracyBonus = (140.0D + ((((3.0D * oppMagicValue) - 10.0D) / 100.0D) - (Math.pow(((3.0D * oppMagicValue / 10.0D) - 100.0D), 2.0D) / 100.0D))) / 100.0D;
             double damageBonus = (250.0D + ((((3.0D * oppMagicValue) - 14.0D) / 100.0D) - (Math.pow(((3.0D * oppMagicValue / 10.0D) - 140.0D), 2.0D) / 100.0D))) / 100.0D;
@@ -481,11 +478,9 @@ public class LuckTrackerPlugin extends Plugin {
                     || wornItemIds.contains(ItemID.TOKTZXILAK_20554) || wornItemIds.contains(ItemID.TZHAARKETOM_T)) {
                 attRoll = (int) (attRoll * 1.1D);
                 maxHit = (int) (maxHit * 1.1D);
-                log.info(String.format("Obsidian Armor set bonus granted"));
+                log.info("Obsidian Armor set bonus granted");
             }
         }
-
-        // TODO Chinchompa range to target
 
         // Inquisitor Armor
         if (attackStyle == AttackStyle.CRUSH) {
@@ -502,6 +497,8 @@ public class LuckTrackerPlugin extends Plugin {
 
             if (totalBonus > 1.0D) log.info("Wearing Inquisitor armor -- total bonus = " + totalBonus);
         }
+
+        // TODO Vampyre weaponns
 
         // TODO Tome of Water
 
