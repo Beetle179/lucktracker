@@ -38,7 +38,7 @@ public class LuckTrackerPanel extends PluginPanel {
         resetButtonConstraints.gridx = 0;
         resetButtonConstraints.gridy = 0;
         resetButtonConstraints.gridwidth = 2;
-        resetButton.addActionListener(e -> plugin.resetStats());
+        resetButton.addActionListener(e -> plugin.resetPanelStats());
 
         totalDmgTextConstraints.anchor = GridBagConstraints.LINE_START;
         totalDmgTextConstraints.insets = new Insets(5, 5, 5, 5);

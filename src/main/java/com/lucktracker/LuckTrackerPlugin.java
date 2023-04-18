@@ -26,8 +26,6 @@
 package com.lucktracker;
 
 import com.google.inject.Provides;
-import com.sun.source.doctree.HiddenTree;
-import jdk.internal.org.jline.utils.Log;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
@@ -81,6 +79,8 @@ public class LuckTrackerPlugin extends Plugin {
     private ArrayList<Pattern> slayerTargetNames = new ArrayList<>();
     private int specialAttackEnergy;
     private boolean usedSpecialAttack;
+    private int ticksSinceLastAttack = 0;
+    private int playerCurrentAnimationId = -1;
 
     private int totalDamage;
     private HitDist runningHitDist;
@@ -161,7 +161,12 @@ public class LuckTrackerPlugin extends Plugin {
         panel = null;
     }
 
-    protected void resetStats() {
+    protected void resetPanelStats() {
+
+        /*
+        Resets stats relevant to Panel display (total damage and running hit distribution).
+         */
+
         this.runningHitDist = new HitDist();
         this.totalDamage = 0;
         panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.getCdfAtDmg(this.totalDamage), this.runningHitDist.getDmgAtCdf(0.1D), this.runningHitDist.getDmgAtCdf(0.9D));
@@ -177,15 +182,24 @@ public class LuckTrackerPlugin extends Plugin {
         Actor interactingActor = player.getInteracting();
         if (interactingActor instanceof NPC) this.lastInteracting = interactingActor;
 
-        // Reset the special attack bool
         clientThread.invokeLater(() -> {
-            this.usedSpecialAttack = false;
+
+            if (ticksSinceLastAttack == 0) {
+                HitDist hitDist = processAttack();
+                runningHitDist.convolve(hitDist);
+            }
+
+            this.usedSpecialAttack = false; // Reset the special attack bool
         });
     }
 
     @Subscribe
     public void onHitsplatApplied(HitsplatApplied hitsplatApplied) {
-        Player player = client.getLocalPlayer();
+
+        /*
+        Update player's total damage.
+         */
+
         Actor actor = hitsplatApplied.getActor();
         if (!(actor instanceof NPC)) // only look for hitsplats applied to NPCs
         {
@@ -200,6 +214,11 @@ public class LuckTrackerPlugin extends Plugin {
 
     @Subscribe
     public void onVarbitChanged(VarbitChanged varbitChanged) {
+
+        /*
+        Identify when a special attack is used, and when the player's slayer task changes
+         */
+
         if (varbitChanged.getVarpId() == VarPlayer.SPECIAL_ATTACK_PERCENT)
             this.specialAttackEnergy = varbitChanged.getValue();
         if (varbitChanged.getValue() < this.specialAttackEnergy) this.usedSpecialAttack = true;
@@ -229,40 +248,12 @@ public class LuckTrackerPlugin extends Plugin {
         //  Also potentially a lot of other attack animations.
         // 	See tickCounterUtil -> aniTM.
 
+        if (!(e.getActor() instanceof  Player)) return;
+        Player p = (Player) e.getActor();
+        if (p != client.getLocalPlayer()) return;
+        playerCurrentAnimationId = p.getAnimation();
 
-        // Do everything AFTER this client thread: need to allow targeted NPC to update first.
-        clientThread.invokeLater(() -> {
-
-            if (!(e.getActor() instanceof Player)) return;
-            Player p = (Player) e.getActor();
-            if (p != client.getLocalPlayer()) return;
-            if (!tickCounterUtil.isAttack(p.getAnimation())) return; // If the animation isn't an attack, stop here
-            int animationId = p.getAnimation();
-
-            // ************************************************** //
-            // Player Attack setup
-            // TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
-
-            int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
-            int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
-
-            WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId); // Determine weapon stance (Controlled, Aggressive, Rapid, etc.)
-            AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId); // Determine if we're using slash, crush, stab, range, or magic based on the weapon type and current stance
-
-            // NPC Defense setup
-
-            int npcId = ((NPC) this.lastInteracting).getId();
-            MonsterData npcData = this.monsterTable.getMonsterData(npcId);
-            if (npcData == null) {
-                UTIL.sendChatMessage("UNKNOWN MONSTER");
-                return;
-            }
-
-            HitDist hitDist = processAttack(attackStyle, weaponStance, npcData);
-            UTIL.sendChatMessage("Average: " + hitDist.getAvgDmg() + " || Max: " + hitDist.getMax() + " || >0 Prob: " + hitDist.getNonZeroHitChance());
-
-            this.runningHitDist.convolve(hitDist);
-        });
+        if (tickCounterUtil.isAttack(playerCurrentAnimationId)) ticksSinceLastAttack = 0;
     }
 
     private void updateVoidStatus() { // gross
@@ -328,12 +319,20 @@ public class LuckTrackerPlugin extends Plugin {
         return monsterAttributes.contains("undead");
     }
 
-    // Decide if this should be a pure function or not... really awkward mix of argument passing and class objects
-    HitDist processAttack(AttackStyle attackStyle, WeaponStance weaponStance, MonsterData npcData) {
+    HitDist processAttack() {
         int effAttLvl, effStrLvl, attRoll, maxHit, defRoll, npcCurrentHp;
         double hitChance;
 
+        int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
+        int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
+
+        // TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
+        WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId); // Determine weapon stance (Controlled, Aggressive, Rapid, etc.)
+        AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId); // Determine if we're using slash, crush, stab, range, or magic based on the weapon type and current stance
+
         NPC targetedNpc = (NPC) lastInteracting;
+        MonsterData npcData = monsterTable.getMonsterData(targetedNpc.getId());
+
         List<Integer> wornItemIds = Arrays.stream(wornItemsContainer.getItems()).map(Item::getId).collect(Collectors.toList());
         EquipmentStat equipmentStatOffense = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
         EquipmentStat equipmentStatDefense = LuckTrackerUtil.getDefensiveStat(equipmentStatOffense); // Using the attackStyle, figure out which worn-equipment stat we should use
@@ -505,6 +504,24 @@ public class LuckTrackerPlugin extends Plugin {
         // TODO Keris weaponry
 
         // TODO Brimstone ring
+
+        // endregion
+
+        // region NPC Modifiers
+
+        // TODO Flags for damage caps, always-max, always-0 (ex. Chomping Mutt, Vorkath ice phase), dmg reduction (Vorkath acid, Verzik P1),
+
+        // endregion
+
+        // region Unique weapons
+
+        // TODO Scythe, Fang
+
+        // endregionn
+
+        // region Special Attacks
+
+        // TODO Claws, Chally, MSB, Dark Bow, DDS,
 
         // endregion
 
