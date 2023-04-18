@@ -79,8 +79,13 @@ public class LuckTrackerPlugin extends Plugin {
     private ArrayList<Pattern> slayerTargetNames = new ArrayList<>();
     private int specialAttackEnergy;
     private boolean usedSpecialAttack;
-    private int ticksSinceLastAttack = 0;
+    private int ticksSinceLastAttack = 1;
     private int playerCurrentAnimationId = -1;
+
+    private int weaponTypeId;
+    private int attackStyleId;
+    private WeaponStance weaponStance;  // Weapon stance (Controlled, Aggressive, Rapid, etc) // TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
+    private AttackStyle attackStyle; // Slash, crush, stab, range, or magic based on the weapon type and current stance
 
     private int totalDamage;
     private HitDist runningHitDist;
@@ -98,6 +103,22 @@ public class LuckTrackerPlugin extends Plugin {
     public final Set<Integer> bofas = new HashSet<>(Arrays.asList(ItemID.BOW_OF_FAERDHINEN_INACTIVE, ItemID.BOW_OF_FAERDHINEN, ItemID.BOW_OF_FAERDHINEN_C, ItemID.BOW_OF_FAERDHINEN_C_25869, ItemID.BOW_OF_FAERDHINEN_C_25884, ItemID.BOW_OF_FAERDHINEN_C_25886, ItemID.BOW_OF_FAERDHINEN_C_25888, ItemID.BOW_OF_FAERDHINEN_C_25890, ItemID.BOW_OF_FAERDHINEN_C_25892, ItemID.BOW_OF_FAERDHINEN_C_25894, ItemID.BOW_OF_FAERDHINEN_C_25896));
     public final Set<Integer> crystalBows = new HashSet<>(Arrays.asList(ItemID.NEW_CRYSTAL_BOW, ItemID.NEW_CRYSTAL_BOW_4213, ItemID.CRYSTAL_BOW_FULL, ItemID.CRYSTAL_BOW_910, ItemID.CRYSTAL_BOW_810, ItemID.CRYSTAL_BOW_710, ItemID.CRYSTAL_BOW_610, ItemID.CRYSTAL_BOW_510, ItemID.CRYSTAL_BOW_410, ItemID.CRYSTAL_BOW_310, ItemID.CRYSTAL_BOW_210, ItemID.CRYSTAL_BOW_110, ItemID.NEW_CRYSTAL_BOW_16888, ItemID.CRYSTAL_BOW));
     public final Set<Integer> imbuedCrystalBows = new HashSet<>(Arrays.asList(ItemID.NEW_CRYSTAL_BOW_I, ItemID.CRYSTAL_BOW_FULL_I, ItemID.CRYSTAL_BOW_910_I, ItemID.CRYSTAL_BOW_810_I, ItemID.CRYSTAL_BOW_710_I, ItemID.CRYSTAL_BOW_610_I, ItemID.CRYSTAL_BOW_510_I, ItemID.CRYSTAL_BOW_410_I, ItemID.CRYSTAL_BOW_310_I, ItemID.CRYSTAL_BOW_210_I, ItemID.CRYSTAL_BOW_110_I, ItemID.NEW_CRYSTAL_BOW_I_16889));
+
+    public final Set<Integer> twoTickWeapons = new HashSet<>(Arrays.asList( // TODO throwing knives
+            ItemID.TOXIC_BLOWPIPE,
+            ItemID.BRONZE_DART, ItemID.BRONZE_DARTP, ItemID.BRONZE_DARTP_5628, ItemID.BRONZE_DARTP_5635,
+            ItemID.IRON_DART, ItemID.IRON_DART_P, ItemID.IRON_DARTP, ItemID.IRON_DARTP_5636,
+            ItemID.STEEL_DART, ItemID.STEEL_DARTP, ItemID.STEEL_DARTP_5630, ItemID.STEEL_DARTP_5637,
+            ItemID.BLACK_DART, ItemID.BLACK_DARTP, ItemID.BLACK_DARTP_5631, ItemID.BLACK_DARTP_5638,
+            ItemID.MITHRIL_DART, ItemID.MITHRIL_DARTP, ItemID.MITHRIL_DARTP_5632, ItemID.MITHRIL_DARTP_5639,
+            ItemID.ADAMANT_DART, ItemID.ADAMANT_DARTP, ItemID.ADAMANT_DARTP_5633, ItemID.ADAMANT_DARTP_5640,
+            ItemID.RUNE_DART, ItemID.RUNE_DARTP, ItemID.RUNE_DARTP_5634, ItemID.RUNE_DARTP_5641,
+            ItemID.AMETHYST_DART, ItemID.AMETHYST_DARTP, ItemID.AMETHYST_DARTP_25855, ItemID.AMETHYST_DARTP_25857,
+            ItemID.DRAGON_DART, ItemID.DRAGON_DARTP, ItemID.DRAGON_DARTP_11233, ItemID.DRAGON_DARTP_11234));
+
+    public final Set<Integer> twoTickAnimations = new HashSet<>(Arrays.asList( // BP: 5061 // TODO throwing knives, darts
+            5061
+    ));
 
     @Inject
     private Client client;
@@ -143,6 +164,11 @@ public class LuckTrackerPlugin extends Plugin {
             // Get worn items on startup // TODO Logging in with nothing equipped will set this to null. (Unequipping items while already logged in properly sets an empty ItemContainer, but not logging in w/ nothinng equipped!)
             final ItemContainer wornItemsContainer = client.getItemContainer(InventoryID.EQUIPMENT);
 
+            weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
+            attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
+            weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId);
+            attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId);
+
             // Get special attack energy, initialize the spec boolean
             this.usedSpecialAttack = false;
             this.specialAttackEnergy = client.getVarpValue(VarPlayer.SPECIAL_ATTACK_PERCENT);
@@ -187,9 +213,20 @@ public class LuckTrackerPlugin extends Plugin {
             if (ticksSinceLastAttack == 0) {
                 HitDist hitDist = processAttack();
                 runningHitDist.convolve(hitDist);
+            } else if (twoTickAnimations.contains(playerCurrentAnimationId)) { // In a 2-tick attack animation
+                if (twoTickWeapons.contains(wornItemsContainer.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx()).getId())) { // Wielding a 2-tick weapon -- note: attacking with a non-2t weapon while on 2t cooldown won't trigger this branch, but it WILL trigger onAnimationChanged -> set ticksSinceLastAttack to 0 -> properly call processAttack()
+                    int tickDelay = (weaponStance == WeaponStance.RAPID) ? 2 : 3;
+                    if (ticksSinceLastAttack % tickDelay == 0) {
+                        log.info("Two-tick weapon special case");
+                        processAttack();
+                    }
+
+                }
             }
 
             this.usedSpecialAttack = false; // Reset the special attack bool
+
+            ticksSinceLastAttack += 1;
         });
     }
 
@@ -219,11 +256,22 @@ public class LuckTrackerPlugin extends Plugin {
         Identify when a special attack is used, and when the player's slayer task changes
          */
 
-        if (varbitChanged.getVarpId() == VarPlayer.SPECIAL_ATTACK_PERCENT)
+        if (varbitChanged.getVarpId() == VarPlayer.SPECIAL_ATTACK_PERCENT) {
             this.specialAttackEnergy = varbitChanged.getValue();
-        if (varbitChanged.getValue() < this.specialAttackEnergy) this.usedSpecialAttack = true;
+        }
+        if (varbitChanged.getValue() < this.specialAttackEnergy) {
+            this.usedSpecialAttack = true;
+        }
         if (varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_CREATURE || varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_LOCATION) {
             updateSlayerTargetNames();
+        }
+        if (varbitChanged.getVarpId() == Varbits.EQUIPPED_WEAPON_TYPE) {
+            weaponTypeId = varbitChanged.getValue();
+            weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId);
+        }
+        if (varbitChanged.getVarbitId() == VarPlayer.ATTACK_STYLE) {
+            attackStyleId = varbitChanged.getValue();
+            attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId);
         }
     }
 
@@ -248,7 +296,7 @@ public class LuckTrackerPlugin extends Plugin {
         //  Also potentially a lot of other attack animations.
         // 	See tickCounterUtil -> aniTM.
 
-        if (!(e.getActor() instanceof  Player)) return;
+        if (!(e.getActor() instanceof Player)) return;
         Player p = (Player) e.getActor();
         if (p != client.getLocalPlayer()) return;
         playerCurrentAnimationId = p.getAnimation();
@@ -322,13 +370,6 @@ public class LuckTrackerPlugin extends Plugin {
     HitDist processAttack() {
         int effAttLvl, effStrLvl, attRoll, maxHit, defRoll, npcCurrentHp;
         double hitChance;
-
-        int attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
-        int weaponTypeId = client.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE);
-
-        // TODO Casting a spell will take whatever stance is currently active... Which is only accurate if autocasting. For casting spells specifically, will probably need to short circuit based on animation?
-        WeaponStance weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId); // Determine weapon stance (Controlled, Aggressive, Rapid, etc.)
-        AttackStyle attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId); // Determine if we're using slash, crush, stab, range, or magic based on the weapon type and current stance
 
         NPC targetedNpc = (NPC) lastInteracting;
         MonsterData npcData = monsterTable.getMonsterData(targetedNpc.getId());
