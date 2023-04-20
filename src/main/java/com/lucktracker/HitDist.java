@@ -1,7 +1,10 @@
 package com.lucktracker;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.ArrayList;
 
+@Slf4j
 public class HitDist {
     private ArrayList<Double> pmf;
     private ArrayList<Double> cdf;
@@ -63,6 +66,10 @@ public class HitDist {
     }
 
     public double getCdfAtDmg(int val) {
+        if (val > this.cdf.size()) {
+            log.info("*** Encountered total damage which exceeded expected maximum total damage ***");
+            return this.cdf.get(this.cdf.size() - 1);
+        }
         return this.cdf.get(val);
     }
 
