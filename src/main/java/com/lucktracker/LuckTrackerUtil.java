@@ -8,12 +8,10 @@ import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
-import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
 import net.runelite.http.api.item.ItemEquipmentStats;
 
-import javax.inject.Inject;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -55,6 +53,8 @@ public class LuckTrackerUtil {
             ItemID.SLAYER_HELMET, ItemID.BLACK_SLAYER_HELMET, ItemID.GREEN_SLAYER_HELMET, ItemID.HYDRA_SLAYER_HELMET, ItemID.PURPLE_SLAYER_HELMET, ItemID.RED_SLAYER_HELMET,  ItemID.TURQUOISE_SLAYER_HELMET,
             ItemID.TWISTED_SLAYER_HELMET, ItemID.TZTOK_SLAYER_HELMET, ItemID.TZKAL_SLAYER_HELMET, ItemID.VAMPYRIC_SLAYER_HELMET,
             ItemID.BLACK_MASK, ItemID.BLACK_MASK_1, ItemID.BLACK_MASK_2, ItemID.BLACK_MASK_3, ItemID.BLACK_MASK_4, ItemID.BLACK_MASK_5, ItemID.BLACK_MASK_6, ItemID.BLACK_MASK_7, ItemID.BLACK_MASK_8, ItemID.BLACK_MASK_9, ItemID.BLACK_MASK_10));
+
+    private final static Set<Integer> toaRoomRegions = new HashSet<>(Arrays.asList(14160, 15698, 15700, 14162, 14164, 15186, 15188, 14674, 14676, 15184, 15696, 14672));
 
     public LuckTrackerUtil(Client client, ItemManager itemManager, ChatMessageManager chatMessageManager, NPCManager npcManager, LuckTrackerConfig config) {
         this.client = client;
@@ -98,6 +98,11 @@ public class LuckTrackerUtil {
     public static Pattern targetNamePattern(final String targetName) {
         return Pattern.compile("(?:\\s|^)" + targetName + "(?:\\s|$)", Pattern.CASE_INSENSITIVE);
     }
+
+    public static boolean regionIsInToa(int region) {
+        return toaRoomRegions.contains(region);
+    }
+
     //endregion
 
     // region Combat Utility Functions -- Generic

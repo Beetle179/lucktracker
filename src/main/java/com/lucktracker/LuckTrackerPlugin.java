@@ -28,6 +28,8 @@ package com.lucktracker;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.*;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatMessageManager;
@@ -96,6 +98,9 @@ public class LuckTrackerPlugin extends Plugin {
     private boolean isWearingMeleeEliteVoid;
     private boolean isWearingRangeEliteVoid;
     private boolean isWearingMagicEliteVoid;
+
+    private boolean inCox = false; // These will be checked on login
+    private boolean inToa = false;
 
     public final Set<Integer> crystalBodies = new HashSet<>(Arrays.asList(ItemID.CRYSTAL_BODY, ItemID.CRYSTAL_BODY_27721, ItemID.CRYSTAL_BODY_27709, ItemID.CRYSTAL_BODY_27733, ItemID.CRYSTAL_BODY_27757, ItemID.CRYSTAL_BODY_27697, ItemID.CRYSTAL_BODY_27745, ItemID.CRYSTAL_BODY_27769));
     public final Set<Integer> crystalLegs = new HashSet<>(Arrays.asList(ItemID.CRYSTAL_LEGS, ItemID.CRYSTAL_LEGS_27725, ItemID.CRYSTAL_LEGS_27713, ItemID.CRYSTAL_LEGS_27701, ItemID.CRYSTAL_LEGS_27761, ItemID.CRYSTAL_LEGS_27737, ItemID.CRYSTAL_LEGS_27749, ItemID.CRYSTAL_LEGS_27773));
@@ -178,6 +183,9 @@ public class LuckTrackerPlugin extends Plugin {
 
             // Figure out what our slayer task is, and get a handle on all applicable target NPC names
             updateSlayerTargetNames();
+
+            inCox = client.getVarbitValue(Varbits.IN_RAID) > 0;
+            inToa = checkPlayerInToa();
         });
     }
 
@@ -185,6 +193,8 @@ public class LuckTrackerPlugin extends Plugin {
     protected void shutDown() {
         clientToolbar.removeNavigation(navButton);
         panel = null;
+        inCox = false;
+        inToa = false;
     }
 
     protected void resetPanelStats() {
@@ -198,6 +208,19 @@ public class LuckTrackerPlugin extends Plugin {
         panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.getCdfAtDmg(this.totalDamage), this.runningHitDist.getDmgAtCdf(0.1D), this.runningHitDist.getDmgAtCdf(0.9D));
     }
 
+    private boolean checkPlayerInToa() {
+        Player player = client.getLocalPlayer();
+        if (player == null) return false;
+
+        LocalPoint lp = player.getLocalLocation();
+        int region = lp == null ? -1 : WorldPoint.fromLocalInstance(client, lp).getRegionID();
+        boolean temp_inToa = LuckTrackerUtil.regionIsInToa(region);
+        if (temp_inToa != inToa) {
+            log.info("TOA state changed to " + temp_inToa);
+        }
+        return temp_inToa;
+    }
+
     @Subscribe
     public void onGameTick(GameTick gameTick) {
 
@@ -207,6 +230,8 @@ public class LuckTrackerPlugin extends Plugin {
         // Update currently interacting NPC
         Actor interactingActor = player.getInteracting();
         if (interactingActor instanceof NPC) this.lastInteracting = interactingActor;
+
+        inToa = checkPlayerInToa(); // No luck finding a way to do this without checking every tick...
 
         clientThread.invokeLater(() -> {
 
@@ -274,6 +299,10 @@ public class LuckTrackerPlugin extends Plugin {
             attackStyleId = varbitChanged.getValue();
             weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId);
             attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId);
+        }
+        if (varbitChanged.getVarbitId() == Varbits.IN_RAID) {
+            inCox = varbitChanged.getValue() > 0;
+            log.info("COX state changed to " + inCox);
         }
     }
 
@@ -382,8 +411,6 @@ public class LuckTrackerPlugin extends Plugin {
 
         boolean slayerTarget = isSlayerTarget(targetedNpc);
         boolean salveTarget = isSalveTarget(targetedNpc);
-        boolean playerInToa = false; // TODO Check if player in TOA for Shadow bonus
-        boolean playerInCox = false; // TODO Check if player in COX for TBow bonus
 
         // region Base Attack Roll and Max Hit
 
@@ -394,7 +421,7 @@ public class LuckTrackerPlugin extends Plugin {
                 if (weaponStance == WeaponStance.POWERED_STAFF_ACCURATE || weaponStance == WeaponStance.POWERED_STAFF_LONGRANGE) {
                     if (wornItemIds.contains(ItemID.TUMEKENS_SHADOW)) {
                         maxHit = visibleMagicLvl / 3 + 1;
-                        int magicMultiplier = playerInToa ? 4 : 3;
+                        int magicMultiplier = inToa ? 4 : 3;
                         maxHit = (int) (maxHit * (1.0D + magicMultiplier * UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.MDMG) / 100.0D));
                     } else if (wornItemIds.contains(ItemID.SANGUINESTI_STAFF) || wornItemIds.contains(ItemID.HOLY_SANGUINESTI_STAFF)) {
                         maxHit = visibleMagicLvl / 3 - 1;
@@ -504,7 +531,7 @@ public class LuckTrackerPlugin extends Plugin {
                 wornItemIds.contains(ItemID.TWISTED_BOW)) {
             int oppMagicLevel = monsterTable.getMonsterData(targetedNpc.getId()).getMagicLvl();
             int oppMagicAcc = monsterTable.getMonsterData(targetedNpc.getId()).getAMagic();
-            int oppMagicValueCap = playerInCox ? 350 : 250;
+            int oppMagicValueCap = inCox ? 350 : 250;
             int oppMagicValue = Math.max(oppMagicValueCap, Math.max(oppMagicAcc, oppMagicLevel));
 
             double accuracyBonus = (140.0D + ((((3.0D * oppMagicValue) - 10.0D) / 100.0D) - (Math.pow(((3.0D * oppMagicValue / 10.0D) - 100.0D), 2.0D) / 100.0D))) / 100.0D;

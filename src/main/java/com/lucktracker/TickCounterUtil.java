@@ -194,7 +194,6 @@ public class TickCounterUtil {
     }
 
     public Boolean isAttack(Integer animationID) {
-        log.info("Animation ID {} \\ class: {}", animationID, animationID.getClass());
         return aniTM.containsKey(animationID);
     }
 

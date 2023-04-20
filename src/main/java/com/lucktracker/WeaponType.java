@@ -120,16 +120,11 @@ public enum WeaponType // Weapon types: Weapon categories (e.g. 2hander, battlea
 
     public static WeaponStance getWeaponStance(int type, int styleId) // Weapon type comes from the EQUIPPED_WEAPON_TYPE varbit; Attack style from the ATTACK_STYLE varp
     {
-        log.info(String.format("type: %d, styleId: %d", type, styleId));
         return weaponTypes.get(type).weaponStances[styleId];
     }
 
     public static AttackStyle getAttackStyle(int type, int styleId) // Weapon type comes from the EQUIPPED_WEAPON_TYPE varbit; Attack style from the ATTACK_STYLE varp
     {
-        log.info(String.format("type: %d, styleId: %d", type, styleId));
-        log.info(weaponTypes.get(type).name());
-        log.info(weaponTypes.get(type).attackStyles[styleId].getName());
-        log.info(weaponTypes.get(type).weaponStances[styleId].getName());
         return weaponTypes.get(type).attackStyles[styleId];
     }
 
