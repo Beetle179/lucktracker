@@ -25,12 +25,14 @@
 package com.lucktracker;
 
 import com.google.common.collect.ImmutableMap;
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.Map;
 
 import static com.lucktracker.AttackStyle.*;
 import static com.lucktracker.WeaponStance.*;
 
-
+@Slf4j
 public enum WeaponType // Weapon types: Weapon categories (e.g. 2hander, battleaxe, powered staff)
 {
     // WEAPONTYPE([WeaponStances], [AttackStyles])
@@ -118,11 +120,16 @@ public enum WeaponType // Weapon types: Weapon categories (e.g. 2hander, battlea
 
     public static WeaponStance getWeaponStance(int type, int styleId) // Weapon type comes from the EQUIPPED_WEAPON_TYPE varbit; Attack style from the ATTACK_STYLE varp
     {
+        log.info(String.format("type: %d, styleId: %d", type, styleId));
         return weaponTypes.get(type).weaponStances[styleId];
     }
 
     public static AttackStyle getAttackStyle(int type, int styleId) // Weapon type comes from the EQUIPPED_WEAPON_TYPE varbit; Attack style from the ATTACK_STYLE varp
     {
+        log.info(String.format("type: %d, styleId: %d", type, styleId));
+        log.info(weaponTypes.get(type).name());
+        log.info(weaponTypes.get(type).attackStyles[styleId].getName());
+        log.info(weaponTypes.get(type).weaponStances[styleId].getName());
         return weaponTypes.get(type).attackStyles[styleId];
     }
 

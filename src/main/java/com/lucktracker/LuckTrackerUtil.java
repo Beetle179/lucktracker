@@ -1,5 +1,6 @@
 package com.lucktracker;
 
+import com.google.inject.Provides;
 import jdk.internal.org.jline.utils.Log;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
@@ -7,10 +8,12 @@ import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
 import net.runelite.http.api.item.ItemEquipmentStats;
 
+import javax.inject.Inject;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -19,6 +22,8 @@ import static com.lucktracker.EquipmentStat.*;
 
 @Slf4j
 public class LuckTrackerUtil {
+
+    private final LuckTrackerConfig config;
     private final Client client;
     private final ItemManager itemManager;
     private final ChatMessageManager chatMessageManager;
@@ -51,11 +56,12 @@ public class LuckTrackerUtil {
             ItemID.TWISTED_SLAYER_HELMET, ItemID.TZTOK_SLAYER_HELMET, ItemID.TZKAL_SLAYER_HELMET, ItemID.VAMPYRIC_SLAYER_HELMET,
             ItemID.BLACK_MASK, ItemID.BLACK_MASK_1, ItemID.BLACK_MASK_2, ItemID.BLACK_MASK_3, ItemID.BLACK_MASK_4, ItemID.BLACK_MASK_5, ItemID.BLACK_MASK_6, ItemID.BLACK_MASK_7, ItemID.BLACK_MASK_8, ItemID.BLACK_MASK_9, ItemID.BLACK_MASK_10));
 
-    public LuckTrackerUtil(Client client, ItemManager itemManager, ChatMessageManager chatMessageManager, NPCManager npcManager) {
+    public LuckTrackerUtil(Client client, ItemManager itemManager, ChatMessageManager chatMessageManager, NPCManager npcManager, LuckTrackerConfig config) {
         this.client = client;
         this.itemManager = itemManager;
         this.chatMessageManager = chatMessageManager;
         this.npcManager = npcManager;
+        this.config = config;
     }
 
     // region General Utility Functions
@@ -155,6 +161,21 @@ public class LuckTrackerUtil {
         return (int) (voidBonus * ((int) (visibleLvl * prayerBonus)) + styleBonus + 9);
     }
 
+    int dartStrength(LuckTrackerConfig.BlowpipeDart dart) { // Can't set up an EnumMap for some reason
+        switch (dart) {
+            case DRAGON: return 35;
+            case AMETHYST: return 28;
+            case RUNE: return 26;
+            case ADAMANT: return 17;
+            case MITHRIL: return 9;
+            case BLACK: return 6;
+            case STEEL: return 3;
+            case IRON: return 2;
+            case BRONZE: return 1;
+            default: return 0;
+        }
+    }
+
     // endregion
 
     // region NPC Utility Functions
@@ -198,6 +219,9 @@ public class LuckTrackerUtil {
             int id = item.getId();
             if (id < 0) continue; // No item in this slot
             bonus += getItemStyleBonus(id, equipmentStat);
+        }
+        if (equipmentStat == RSTR && wornItemsContainer.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx()).getId() == ItemID.TOXIC_BLOWPIPE) {
+            bonus += dartStrength(config.equippedBlowpipeDarts());
         }
         return bonus;
     }

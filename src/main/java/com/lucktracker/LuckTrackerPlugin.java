@@ -127,13 +127,13 @@ public class LuckTrackerPlugin extends Plugin {
     @Inject
     private ClientToolbar clientToolbar;
     @Inject
-    private LuckTrackerConfig config;
-    @Inject
     private ItemManager itemManager;
     @Inject
     private ChatMessageManager chatMessageManager;
     @Inject
     private NPCManager npcManager;
+    @Inject
+    private LuckTrackerConfig config;
 
     @Provides
     LuckTrackerConfig provideConfig(ConfigManager configManager) {
@@ -145,7 +145,7 @@ public class LuckTrackerPlugin extends Plugin {
         tickCounterUtil = new TickCounterUtil(); // Utility ripped from PVMTickCounter plugin: dictionary of (animation_ID, tick_duration) pairs. Used for ID'ing player attack animations.
         tickCounterUtil.init();
         monsterTable = new Monsters();
-        UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager);
+        UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager, config);
 
         this.totalDamage = 0;
 
@@ -220,7 +220,6 @@ public class LuckTrackerPlugin extends Plugin {
                         log.info("Two-tick weapon special case");
                         processAttack();
                     }
-
                 }
             }
 
@@ -265,12 +264,15 @@ public class LuckTrackerPlugin extends Plugin {
         if (varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_CREATURE || varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_LOCATION) {
             updateSlayerTargetNames();
         }
-        if (varbitChanged.getVarpId() == Varbits.EQUIPPED_WEAPON_TYPE) {
+        if (varbitChanged.getVarbitId() == Varbits.EQUIPPED_WEAPON_TYPE) {
             weaponTypeId = varbitChanged.getValue();
+            attackStyleId = client.getVarpValue(VarPlayer.ATTACK_STYLE);
             weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId);
+            attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId);
         }
-        if (varbitChanged.getVarbitId() == VarPlayer.ATTACK_STYLE) {
+        if (varbitChanged.getVarpId() == VarPlayer.ATTACK_STYLE) {
             attackStyleId = varbitChanged.getValue();
+            weaponStance = WeaponType.getWeaponStance(weaponTypeId, attackStyleId);
             attackStyle = WeaponType.getAttackStyle(weaponTypeId, attackStyleId);
         }
     }
@@ -412,12 +414,13 @@ public class LuckTrackerPlugin extends Plugin {
             case RANGE: {
                 effAttLvl = LuckTrackerUtil.calcEffectiveRangeAttack(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RATT), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
                 effStrLvl = LuckTrackerUtil.calcEffectiveRangeStrength(client.getBoostedSkillLevel(Skill.RANGED), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_RSTR), weaponStance.getInvisBonus(Skill.RANGED), isWearingRangeVoid, isWearingRangeEliteVoid);
-                maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, equipmentStatOffense));
+                maxHit = LuckTrackerUtil.calcRangeBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.RSTR));
                 break;
             }
             default: {
                 effAttLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.ATTACK), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_ATT), weaponStance.getInvisBonus(Skill.ATTACK), isWearingMeleeVoid || isWearingMeleeEliteVoid);
                 effStrLvl = LuckTrackerUtil.calcEffectiveMeleeLevel(client.getBoostedSkillLevel(Skill.STRENGTH), UTIL.getActivePrayerModifiers(PrayerAttribute.PRAY_STR), weaponStance.getInvisBonus(Skill.STRENGTH), isWearingMeleeVoid || isWearingMeleeEliteVoid);
+
                 maxHit = LuckTrackerUtil.calcBasicMaxHit(effStrLvl, UTIL.getEquipmentStyleBonus(wornItemsContainer, EquipmentStat.STR));
                 break;
             }

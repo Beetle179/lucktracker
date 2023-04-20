@@ -30,13 +30,18 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.Range;
 
+import java.util.EnumMap;
+
 @ConfigGroup("lucktracker")
 public interface LuckTrackerConfig extends Config
 {
+
+	enum BlowpipeDart { BRONZE, IRON, STEEL, BLACK, MITHRIL, ADAMANT, RUNE, AMETHYST, DRAGON }
+
 	@ConfigItem(
-			keyName = "placeholderSetting",
-			name = "PLACEHOLDER",
-			description = "Description"
+			keyName = "dartType",
+			name = "Blowpipe Darts",
+			description = "Darts equipped in your Blowpipe must be updated manually."
 	)
-	default int test() { return 0; }
+	default BlowpipeDart equippedBlowpipeDarts() { return BlowpipeDart.DRAGON; }
 }
