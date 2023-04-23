@@ -26,6 +26,7 @@ public class LuckTrackerUtil {
     private final ItemManager itemManager;
     private final ChatMessageManager chatMessageManager;
     private final NPCManager npcManager;
+    private final Monsters monsterTable;
 
     private final static Set<Integer> imbuedSlayerHelms = new HashSet<>(Arrays.asList(
     ItemID.SLAYER_HELMET_I, ItemID.SLAYER_HELMET_I_25177, ItemID.SLAYER_HELMET_I_26674,
@@ -56,12 +57,13 @@ public class LuckTrackerUtil {
 
     private final static Set<Integer> toaRoomRegions = new HashSet<>(Arrays.asList(14160, 15698, 15700, 14162, 14164, 15186, 15188, 14674, 14676, 15184, 15696, 14672));
 
-    public LuckTrackerUtil(Client client, ItemManager itemManager, ChatMessageManager chatMessageManager, NPCManager npcManager, LuckTrackerConfig config) {
+    public LuckTrackerUtil(Client client, ItemManager itemManager, ChatMessageManager chatMessageManager, NPCManager npcManager, LuckTrackerConfig config, Monsters monsterTable) {
         this.client = client;
         this.itemManager = itemManager;
         this.chatMessageManager = chatMessageManager;
         this.npcManager = npcManager;
         this.config = config;
+        this.monsterTable = monsterTable;
     }
 
     // region General Utility Functions
@@ -185,9 +187,15 @@ public class LuckTrackerUtil {
 
     // region NPC Utility Functions
     public int getNpcCurrentHp(NPC npc) { // Logic from OpponentInfo plugin
+        int maxHealth;
         int healthRatio = npc.getHealthRatio();
         int healthScale = npc.getHealthScale();
-        int maxHealth = npcManager.getHealth(npc.getId());
+        try {
+            maxHealth = npcManager.getHealth(npc.getId());
+        }
+        catch (Exception e) {
+            maxHealth = monsterTable.getMonsterData(npc.getId()).getHitpoints();
+        }
         int minHealth = maxHealth;
         if (healthScale > 1) {
             if (healthRatio > 1) {

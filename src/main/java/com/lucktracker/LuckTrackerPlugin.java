@@ -99,7 +99,13 @@ public class LuckTrackerPlugin extends Plugin {
     private boolean isWearingRangeEliteVoid;
     private boolean isWearingMagicEliteVoid;
 
-    private boolean inCox = false; // These will be checked on login
+    private final int COX_CM_VARBIT = 6385;
+    private final int partyMaxHpLvl = 99;
+    private final int partyMaxCbLvl = 126; // TODO Calculate these party values instead of hardcoding
+    private final int partyAvgMinLvl = 99;
+    private int coxPartySize = -1; // Players in party when raid starts. Used for defense scaling in COX
+    private boolean inCoxCm = false;
+    private boolean inCox = false; // (These will also be checked on login)
     private boolean inToa = false;
 
     public final Set<Integer> crystalBodies = new HashSet<>(Arrays.asList(ItemID.CRYSTAL_BODY, ItemID.CRYSTAL_BODY_27721, ItemID.CRYSTAL_BODY_27709, ItemID.CRYSTAL_BODY_27733, ItemID.CRYSTAL_BODY_27757, ItemID.CRYSTAL_BODY_27697, ItemID.CRYSTAL_BODY_27745, ItemID.CRYSTAL_BODY_27769));
@@ -150,7 +156,7 @@ public class LuckTrackerPlugin extends Plugin {
         tickCounterUtil = new TickCounterUtil(); // Utility ripped from PVMTickCounter plugin: dictionary of (animation_ID, tick_duration) pairs. Used for ID'ing player attack animations.
         tickCounterUtil.init();
         monsterTable = new Monsters();
-        UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager, config);
+        UTIL = new LuckTrackerUtil(client, itemManager, chatMessageManager, npcManager, config, monsterTable);
 
         this.totalDamage = 0;
 
@@ -302,7 +308,14 @@ public class LuckTrackerPlugin extends Plugin {
         }
         if (varbitChanged.getVarbitId() == Varbits.IN_RAID) {
             inCox = varbitChanged.getValue() > 0;
+            inCoxCm = client.getVarbitValue(COX_CM_VARBIT) == 1;
             log.info("COX state changed to " + inCox);
+        }
+        if (varbitChanged.getVarbitId() == Varbits.RAID_STATE) {
+            if (varbitChanged.getValue() == 1) {
+                coxPartySize = client.getVarbitValue(Varbits.RAID_PARTY_SIZE);
+                log.info(String.format("Started a COX with %d players", coxPartySize));
+            }
         }
     }
 
@@ -404,6 +417,10 @@ public class LuckTrackerPlugin extends Plugin {
 
         NPC targetedNpc = (NPC) lastInteracting;
         MonsterData npcData = monsterTable.getMonsterData(targetedNpc.getId());
+        if (npcData == null) {
+            log.info("Unable to identify monster with ID " + targetedNpc.getId());
+            return new HitDist();
+        }
 
         List<Integer> wornItemIds = Arrays.stream(wornItemsContainer.getItems()).map(Item::getId).collect(Collectors.toList());
         EquipmentStat equipmentStatOffense = attackStyle.getEquipmentStat(); // Using the attackStyle, figure out which worn-equipment stat we should use
@@ -459,6 +476,25 @@ public class LuckTrackerPlugin extends Plugin {
         // endregion
 
         // region NPC HP and basic Defense Roll
+
+        if (inCox) {
+            if (Objects.equals(npcData.getName(), "Great Olm") || Objects.equals(npcData.getName(), "Great Olm (Left claw)") || Objects.equals(npcData.getName(), "Great Olm (Right claw)")) {
+                npcData.setHpLvl(300 * (coxPartySize - coxPartySize / 8 * 3 + 1));
+            } else if (Objects.equals(npcData.getName(), "Guardian")) {
+                npcData.setHpLvl((151 + partyAvgMinLvl) * partyMaxCbLvl / 126 * (coxPartySize / 2 + 1) * (inCoxCm ? 3 : 2) / 2);
+            } else {
+                npcData.setHpLvl(npcData.getHitpoints() * partyMaxCbLvl / 126 * (coxPartySize / 2 + 1) * (inCoxCm ? 3 : 2) / 2);
+            }
+
+            if (Objects.equals(npcData.getName(), "Great Olm") || Objects.equals(npcData.getName(), "Great Olm (Left claw)") || Objects.equals(npcData.getName(), "Great Olm (Right claw)")) {
+                npcData.setDefLvl(npcData.getDefLvl() * (((int) Math.sqrt(coxPartySize - 1)) + (coxPartySize - 1) * 7 / 10 + 100) / 100 * (inCoxCm ? 3 : 2) / 2);
+            } else if (Objects.equals(npcData.getName(), "Tekton")) {
+                npcData.setDefLvl(205 * (partyMaxHpLvl * 4 / 9 + 55) / 99 *(((int) Math.sqrt(coxPartySize - 1)) + (coxPartySize - 1) * 7 / 10 + 100) / 100 * (inCoxCm ? 6 : 5) / 5);
+            } else {
+                npcData.setDefLvl(npcData.getDefLvl() * (partyMaxHpLvl * 4 / 9 + 55) / 99 * ((int) (Math.sqrt(coxPartySize - 1)) + (coxPartySize - 1) * 7 / 10 + 100) / 100 * (inCoxCm ? 3 : 2) / 2);
+            }
+            log.info(String.format("Party size of %d, CM is %b, opponent defense level is %d, opponent HP level is %d", coxPartySize, inCoxCm, npcData.getDefLvl(), npcData.getHitpoints()));
+            }
 
         npcCurrentHp = UTIL.getNpcCurrentHp(targetedNpc);
         defRoll = npcData.calcDefenseRoll(equipmentStatDefense);
@@ -532,14 +568,14 @@ public class LuckTrackerPlugin extends Plugin {
             int oppMagicLevel = monsterTable.getMonsterData(targetedNpc.getId()).getMagicLvl();
             int oppMagicAcc = monsterTable.getMonsterData(targetedNpc.getId()).getAMagic();
             int oppMagicValueCap = inCox ? 350 : 250;
-            int oppMagicValue = Math.max(oppMagicValueCap, Math.max(oppMagicAcc, oppMagicLevel));
+            int oppMagicValue = Math.min(oppMagicValueCap, Math.max(oppMagicAcc, oppMagicLevel));
 
             double accuracyBonus = (140.0D + ((((3.0D * oppMagicValue) - 10.0D) / 100.0D) - (Math.pow(((3.0D * oppMagicValue / 10.0D) - 100.0D), 2.0D) / 100.0D))) / 100.0D;
             double damageBonus = (250.0D + ((((3.0D * oppMagicValue) - 14.0D) / 100.0D) - (Math.pow(((3.0D * oppMagicValue / 10.0D) - 140.0D), 2.0D) / 100.0D))) / 100.0D;
 
             attRoll = (int) (attRoll * accuracyBonus);
             maxHit = (int) (maxHit * damageBonus);
-            log.info(String.format("Wielding Twisted Bow -- accuracy bonus = %f, damage bonus = %f", accuracyBonus, damageBonus));
+            log.info(String.format("Wielding Twisted Bow -- oppMagicValue = %d, accuracy bonus = %f, damage bonus = %f", oppMagicValue, accuracyBonus, damageBonus));
         }
 
         // Obsidian Armor set bonus (NOT Bers. necklace)

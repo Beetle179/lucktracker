@@ -5,8 +5,8 @@ package com.lucktracker;
 public class MonsterData {
     private final String name;
     private final String[] attributes; //undead, draconic, etc
-    private final int id, size, hitpoints;
-    private final int att, str, def, mage, range; //levels
+    private final int id, size;
+    private int hitpoints, att, str, def, mage, range; //levels
     private final int attbns, arange, amagic; //offensive boosts (corresponds to player's arange, amagic, attbns = (aslash, astab, acrush))
     private final int strbns, rngbns, mbns; //more offensive boosts: strength/max hits
     private final int dstab, dslash, dcrush, dmagic, drange; //defensive bonuses
@@ -77,5 +77,17 @@ public class MonsterData {
             default: System.out.println("FAILED TO IDENTIFY STAT"); defRoll = -1;
         }
         return defRoll;
+    }
+
+    public void setDefLvl(int newLvl) {
+        this.def = newLvl;
+    }
+
+    public void setMagicLvl(int newLvl) {
+        this.mage = newLvl;
+    }
+
+    public void setHpLvl(int newLvl) {
+        this.hitpoints = newLvl;
     }
 }
