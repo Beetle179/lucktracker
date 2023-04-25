@@ -37,8 +37,13 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
+import net.runelite.client.party.PartyService;
 import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.party.PartyPlugin;
+import net.runelite.client.plugins.specialcounter.SpecialCounterUpdate;
+import net.runelite.client.plugins.specialcounter.SpecialWeapon;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
@@ -59,6 +64,7 @@ import java.util.stream.Collectors;
 )
 
 @Slf4j
+@PluginDependency(PartyPlugin.class)
 public class LuckTrackerPlugin extends Plugin {
 
     /*
@@ -83,6 +89,9 @@ public class LuckTrackerPlugin extends Plugin {
     private boolean usedSpecialAttack;
     private int ticksSinceLastAttack = 1;
     private int playerCurrentAnimationId = -1;
+    private int currentWorld;
+
+    private final Map<Integer, Integer> reducedDefLvls = new HashMap<>();
 
     private int weaponTypeId;
     private int attackStyleId;
@@ -106,6 +115,7 @@ public class LuckTrackerPlugin extends Plugin {
     private int coxPartySize = -1; // Players in party when raid starts. Used for defense scaling in COX
     private boolean inCoxCm = false;
     private boolean inCox = false; // (These will also be checked on login)
+    private boolean bloatDown = false;
     private boolean inToa = false;
 
     public final Set<Integer> crystalBodies = new HashSet<>(Arrays.asList(ItemID.CRYSTAL_BODY, ItemID.CRYSTAL_BODY_27721, ItemID.CRYSTAL_BODY_27709, ItemID.CRYSTAL_BODY_27733, ItemID.CRYSTAL_BODY_27757, ItemID.CRYSTAL_BODY_27697, ItemID.CRYSTAL_BODY_27745, ItemID.CRYSTAL_BODY_27769));
@@ -145,6 +155,8 @@ public class LuckTrackerPlugin extends Plugin {
     private NPCManager npcManager;
     @Inject
     private LuckTrackerConfig config;
+    @Inject
+    private PartyService partyService;
 
     @Provides
     LuckTrackerConfig provideConfig(ConfigManager configManager) {
@@ -201,6 +213,31 @@ public class LuckTrackerPlugin extends Plugin {
         panel = null;
         inCox = false;
         inToa = false;
+        reducedDefLvls.clear();
+    }
+
+    @Subscribe
+    public void onScriptPostFired(ScriptPostFired e) {
+        if (e.getScriptId() == ScriptID.TOB_HUD_SOTETSEG_FADE) {
+            reducedDefLvls.clear();
+        }
+        return;
+    }
+
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged e) {
+        if (e.getGameState() == GameState.LOGGED_IN) {
+            UTIL.sendChatMessage("LOGGED IN EVENT");
+            int[] regions = client.getMapRegions();
+            for (int i = 0; i < regions.length; i++) {
+                UTIL.sendChatMessage("  Region " + regions[i]);
+            }
+
+            if (client.getWorld() != currentWorld) {
+                reducedDefLvls.clear();
+            }
+            currentWorld = client.getWorld();
+        };
     }
 
     protected void resetPanelStats() {
@@ -212,6 +249,9 @@ public class LuckTrackerPlugin extends Plugin {
         this.runningHitDist = new HitDist();
         this.totalDamage = 0;
         panel.updatePanelStats(this.totalDamage, this.runningHitDist.getAvgDmg(), this.runningHitDist.getCdfAtDmg(this.totalDamage), this.runningHitDist.getDmgAtCdf(0.1D), this.runningHitDist.getDmgAtCdf(0.9D));
+        NPC[] cachedNpcs = client.getCachedNPCs();
+        log.info("Length of client.getCachedNpcs(): " + client.getCachedNPCs().length);
+        ;
     }
 
     private boolean checkPlayerInToa() {
@@ -287,10 +327,11 @@ public class LuckTrackerPlugin extends Plugin {
          */
 
         if (varbitChanged.getVarpId() == VarPlayer.SPECIAL_ATTACK_PERCENT) {
+            if (varbitChanged.getValue() < this.specialAttackEnergy) {
+                log.info("Used special attack");
+                this.usedSpecialAttack = true;
+            }
             this.specialAttackEnergy = varbitChanged.getValue();
-        }
-        if (varbitChanged.getValue() < this.specialAttackEnergy) {
-            this.usedSpecialAttack = true;
         }
         if (varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_CREATURE || varbitChanged.getVarpId() == VarPlayer.SLAYER_TASK_LOCATION) {
             updateSlayerTargetNames();
@@ -339,11 +380,19 @@ public class LuckTrackerPlugin extends Plugin {
         // TODO hook up salamander blaze and flare; no animation on player, but it spawns G = 952.
         //  Also potentially a lot of other attack animations.
         // 	See tickCounterUtil -> aniTM.
+        // TODO Tekton defense regen. From Solo COX/CM discord: Does 3-6 regeneration cycles at the anvil, each cycle being 3 ticks, each regenerating 1% + 1 of its base HP and 5% + 1 of its base Defence
+        int animationId = e.getActor().getAnimation();
+
+        if (e.getActor() instanceof NPC && e.getActor().getName() != null) {
+            if (e.getActor().getName().equalsIgnoreCase("pestilent bloat")) {
+                bloatDown = animationId == 8082;
+            }
+        }
 
         if (!(e.getActor() instanceof Player)) return;
         Player p = (Player) e.getActor();
         if (p != client.getLocalPlayer()) return;
-        playerCurrentAnimationId = p.getAnimation();
+        playerCurrentAnimationId = animationId;
 
         if (tickCounterUtil.isAttack(playerCurrentAnimationId)) ticksSinceLastAttack = 0;
     }
@@ -411,15 +460,93 @@ public class LuckTrackerPlugin extends Plugin {
         return monsterAttributes.contains("undead");
     }
 
+    @Subscribe
+    public void onNpcDespawned(NpcDespawned e) {
+        int npcIndex = e.getNpc().getIndex();
+        String npcName = e.getNpc().getName();
+        if (reducedDefLvls.containsKey(npcIndex)) {
+            reducedDefLvls.remove(npcIndex);
+            log.info(String.format("Killed %s; resetting defense level", npcName));
+        }
+    }
+
+    @Subscribe
+    public void onSpecialCounterUpdate(SpecialCounterUpdate e) {
+
+        log.info("SpecialCounterUpdate");
+
+        int hit = e.getHit();
+        int world = e.getWorld();
+        SpecialWeapon weapon = e.getWeapon();
+        int npcIndex = e.getNpcIndex();
+        int npcId = client.getCachedNPCs()[npcIndex].getId();
+        MonsterData npcData = monsterTable.getMonsterData(npcId);
+
+        clientThread.invoke(() ->
+        {
+            if (world != client.getWorld()) return;
+
+            if (!reducedDefLvls.containsKey(npcId)) {
+                reducedDefLvls.put(npcIndex, npcData.getDefLvl());
+            }
+
+            int oldDefLvl = reducedDefLvls.get(npcIndex);
+            int newDefLvl = oldDefLvl;
+
+            if (weapon == SpecialWeapon.DRAGON_WARHAMMER) {
+                if (hit != 0) {
+                    newDefLvl = (int) (oldDefLvl * 0.7);
+                }
+            } else if (weapon == SpecialWeapon.BANDOS_GODSWORD) {
+                if (hit == 0 && Objects.equals(npcData.getName(), "Tekton")) {
+                    newDefLvl = oldDefLvl - 10;
+                } else if (Objects.equals(npcData.getName(), "Corporeal Beast") || (Objects.equals(npcData.getName(), "Pestilent Bloat") && !bloatDown)) {
+                    newDefLvl = oldDefLvl - (2 * hit);
+                }
+                else {
+                    newDefLvl = oldDefLvl - hit;
+                }
+            } else if (weapon == SpecialWeapon.DORGESHUUN_CROSSBOW || weapon == SpecialWeapon.BONE_DAGGER) {
+                newDefLvl = oldDefLvl - hit;
+            } else if (weapon == SpecialWeapon.ARCLIGHT) {
+                if (Arrays.asList(npcData.getAttributes()).contains("demon")) {
+                    newDefLvl = (int) (oldDefLvl * 0.9);
+                } else {
+                    newDefLvl = (int) (oldDefLvl * 0.95);
+                }
+            } else if (weapon == SpecialWeapon.BARRELCHEST_ANCHOR) {
+                newDefLvl = (int) (oldDefLvl * 0.9);
+            }
+
+            if (Objects.equals(npcData.getName(), "Sotetseg")) {
+                newDefLvl = Math.max(100, newDefLvl);
+            } else if (Objects.equals(npcData.getName(), "Obelisk")) {
+                newDefLvl = Math.max(60, newDefLvl);
+            } // TODO rest of TOA NPCs
+
+            if (newDefLvl < 0) {
+                newDefLvl = 0;
+            }
+
+            reducedDefLvls.replace(npcIndex, newDefLvl);
+            log.info(String.format("Defense of %s changed from %d to %d", npcData.getName(), oldDefLvl, newDefLvl));
+        });
+    }
+
     HitDist processAttack() {
         int effAttLvl, effStrLvl, attRoll, maxHit, defRoll, npcCurrentHp;
         double hitChance;
 
         NPC targetedNpc = (NPC) lastInteracting;
+        int npcIndex = targetedNpc.getIndex();
         MonsterData npcData = monsterTable.getMonsterData(targetedNpc.getId());
         if (npcData == null) {
             log.info("Unable to identify monster with ID " + targetedNpc.getId());
             return new HitDist();
+        }
+        if (reducedDefLvls.containsKey(npcIndex)) {
+            log.info("Attacking monster with reduced def level, cur level is " + reducedDefLvls.get(npcIndex));
+            npcData.setDefLvl(reducedDefLvls.get(npcIndex));
         }
 
         List<Integer> wornItemIds = Arrays.stream(wornItemsContainer.getItems()).map(Item::getId).collect(Collectors.toList());
@@ -632,6 +759,7 @@ public class LuckTrackerPlugin extends Plugin {
 
         // endregion
 
+        // TODO scale defRoll for TOA invocation
         hitChance = LuckTrackerUtil.getHitChance(attRoll, defRoll);
 
         return new HitDist(hitChance, maxHit, npcCurrentHp);
